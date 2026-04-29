@@ -13,6 +13,18 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 
 
+NELSON_RULE_NAMES = {
+    1: "Rule 1: Point > 3sigma from mean",
+    2: "Rule 2: 9 points same side of mean",
+    3: "Rule 3: 6 points steadily trending",
+    4: "Rule 4: 14 points alternating up/down",
+    5: "Rule 5: 2 of 3 points > 2sigma (same side)",
+    6: "Rule 6: 4 of 5 points > 1sigma (same side)",
+    7: "Rule 7: 15 points within +/-1sigma",
+    8: "Rule 8: 8 points outside +/-1sigma with both sides represented",
+}
+
+
 THEME_PRESETS = {
     "Midnight": {
         "page_bg": "#0b1220",
@@ -347,7 +359,13 @@ class StatisticalCalculator:
             if i >= 14:
                 if all(abs(x - mean) <= std for x in data[i-14:i+1]): rules[7].append(i)
             if i >= 7:
-                if all(abs(x - mean) > std for x in data[i-7:i+1]): rules[8].append(i)
+                slice_data = data[i-7:i+1]
+                if (
+                    all(abs(x - mean) > std for x in slice_data)
+                    and any(x > mean for x in slice_data)
+                    and any(x < mean for x in slice_data)
+                ):
+                    rules[8].append(i)
         return rules
 
     def calculate(self, inputs):
@@ -433,7 +451,7 @@ class StatisticalCalculator:
             std_error = (
                 results["s"] / np.sqrt(results["n_samples"]) if results["s"] > 0 else 0
             )
-            z_stat = (
+            test_stat = (
                 (results["x_bar"] - results["tm"]) / std_error
                 if std_error > 0
                 else (
@@ -442,22 +460,22 @@ class StatisticalCalculator:
                     else np.inf * np.sign(results["x_bar"] - results["tm"])
                 )
             )
+            degrees_of_freedom = results["n_samples"] - 1
 
             p_value = np.nan
-            if not np.isfinite(z_stat):
+            if not np.isfinite(test_stat):
                 p_value = 0.0
             elif results["hypothesis_type"] == "Two-Sided":
-                p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+                p_value = 2 * (1 - stats.t.cdf(abs(test_stat), df=degrees_of_freedom))
             elif results["hypothesis_type"] == "Upper-Sided":  # mu > Tm
-                p_value = 1 - stats.norm.cdf(z_stat)
+                p_value = 1 - stats.t.cdf(test_stat, df=degrees_of_freedom)
             else:  # Lower-Sided, mu < Tm
-                p_value = stats.norm.cdf(z_stat)
+                p_value = stats.t.cdf(test_stat, df=degrees_of_freedom)
 
-            # Use more precise ppf function
             criticalValue_ppf = (
-                abs(stats.norm.ppf(alpha / 2))
+                abs(stats.t.ppf(alpha / 2, df=degrees_of_freedom))
                 if results["hypothesis_type"] == "Two-Sided"
-                else abs(stats.norm.ppf(alpha))
+                else abs(stats.t.ppf(alpha, df=degrees_of_freedom))
             )
             marginOfError = criticalValue_ppf * std_error
 
@@ -474,7 +492,10 @@ class StatisticalCalculator:
                 results["ci_upper"] = results["x_bar"] + marginOfError  # One-sided CI
 
             results["hypothesisResult"] = {
-                "z_stat": z_stat,
+                "test_stat": test_stat,
+                "z_stat": test_stat,
+                "statistic_label": "t",
+                "degrees_of_freedom": degrees_of_freedom,
                 "p_value": p_value,
                 "alpha": alpha,
             }
@@ -482,7 +503,10 @@ class StatisticalCalculator:
             results["ci_lower"] = np.nan
             results["ci_upper"] = np.nan
             results["hypothesisResult"] = {
+                "test_stat": np.nan,
                 "z_stat": np.nan,
+                "statistic_label": "t",
+                "degrees_of_freedom": np.nan,
                 "p_value": np.nan,
                 "alpha": alpha,
             }
@@ -1112,12 +1136,14 @@ def get_summary_panel_content(results):
 
     # Centering
     if s == 0:
-        centering_text = f'<span style="color: green; font-weight: bold;">Excellent:</span> Process has zero variation and is centered{f" (but requires shift of {shiftValue:.{dp}f})." if shiftValue != 0 else "."}'
-        if shiftValue != 0:
+        if shiftValue == 0:
+            centering_text = '<span style="color: green; font-weight: bold;">Excellent:</span> Process has zero variation and is perfectly centered.'
+        else:
+            centering_text = f'<span style="color: green; font-weight: bold;">Good:</span> Process has zero variation. It is off-target by <b>{shiftValue:.{dp}f}</b>, but variation is zero.'
             recommendations.append(
-                f"Adjust process mean by <b>{shiftValue:.{dp}f}</b> to align with T<sub>m</sub>."
+                f"Note: Process mean is off-target by <b>{shiftValue:.{dp}f}</b>. You may align with T<sub>m</sub>, but zero variation ensures perfect consistency."
             )
-            is_marginal = True
+            # We no longer set is_marginal = True here for s=0 because 0 variation is perfectly capable if within spec limits.
     elif abs(shiftValue) < (s * 0.05):
         centering_text = '<span style="color: green; font-weight: bold;">Excellent:</span> Process is well-centered.'
     else:
@@ -1129,7 +1155,12 @@ def get_summary_panel_content(results):
 
     # Capability
     if s == 0:
-        capability_text = '<span style="color: green; font-weight: bold;">Perfect Capability (σ=0):</span> Index is effectively infinite (∞).'
+        if CpkCurrent == -np.inf:
+            capability_text = '<span style="color: red; font-weight: bold;">Not Capable:</span> Process has zero variation but is entirely outside specifications (Cpk = -∞).'
+            recommendations.append("Urgent action required: Process is completely outside tolerance. Re-center mean immediately.")
+            is_good = False
+        else:
+            capability_text = '<span style="color: green; font-weight: bold;">Perfect Capability (σ=0):</span> Index is effectively infinite (∞).'
     elif np.isfinite(CpkCurrent) and CpkCurrent >= target_index_value:
         capability_text = f'<span style="color: green; font-weight: bold;">Capable:</span> Current index of <b>{CpkCurrent:.{dp}f}</b> meets target of <b>{target_index_value:.2f}</b>.'
     elif np.isfinite(CpkCurrent) and CpkCurrent >= 1.33:
@@ -1185,15 +1216,16 @@ def get_summary_panel_content(results):
     # Hypothesis Test
     p_value = hypothesisResult.get("p_value", np.nan)
     alpha = hypothesisResult.get("alpha", np.nan)
-    z_stat = hypothesisResult.get("z_stat", np.nan)
+    test_stat = hypothesisResult.get("test_stat", hypothesisResult.get("z_stat", np.nan))
+    statistic_label = hypothesisResult.get("statistic_label", "t")
 
-    if np.isfinite(p_value) and np.isfinite(alpha) and np.isfinite(z_stat):
+    if np.isfinite(p_value) and np.isfinite(alpha) and np.isfinite(test_stat):
         if p_value < alpha:
             hypothesis_text = f'<span style="color: orange; font-weight: bold;">Reject H₀:</span> With a p-value of <b>{p_value:.3e}</b> (which is < α={alpha:.2f}), there is significant evidence that the process mean has shifted from the target.'
             is_marginal = True
         else:
             hypothesis_text = f'<span style="color: green; font-weight: bold;">Fail to Reject H₀:</span> With a p-value of <b>{p_value:.3e}</b> (which is >= α={alpha:.2f}), there is no significant evidence that the mean has shifted from the target.'
-        hypothesis_text += f" (Z-statistic: {z_stat:.3f})"
+        hypothesis_text += f" ({statistic_label}-statistic: {test_stat:.3f})"
     else:
         hypothesis_text = "Hypothesis test skipped (requires n>=2 and valid inputs)."
 
@@ -1720,9 +1752,9 @@ class ExportManager:
                     None,
                 ],
                 [
-                    self._create_cell("Z-Statistic", ["metricLabel"]),
+                    self._create_cell("t-Statistic", ["metricLabel"]),
                     self._create_cell(
-                        hypo.get("z_stat"), extra_styles=self._get_num_style(4)
+                        hypo.get("test_stat", hypo.get("z_stat")), extra_styles=self._get_num_style(4)
                     ),
                     None,
                 ],
@@ -1795,7 +1827,7 @@ class ExportManager:
             "Distribution",
             "Confidence_Level",
             "Hypothesis_Type",
-            "Z_Stat",
+            "t_Stat",
             "P_Value",
             "Alpha",
             "Hypo_Conclusion",
@@ -1918,7 +1950,7 @@ class ExportManager:
                 ),
                 self._create_cell(entry.get("hypothesis_type", "")),
                 self._create_cell(
-                    hypo.get("z_stat"), extra_styles=self._get_num_style(4)
+                    hypo.get("test_stat", hypo.get("z_stat")), extra_styles=self._get_num_style(4)
                 ),
                 self._create_cell(hypo.get("p_value"), extra_styles=num_style_pval),
                 self._create_cell(
@@ -1964,7 +1996,7 @@ class SigmaAssistant:
     }
 
     @classmethod
-    def render_fixed(cls, state="idle", message=None):
+    def render_fixed(cls, state="idle", message=None, cp=1.0):
         """
         Render the Clippy-style mascot using st.markdown for TRUE fixed positioning.
         This injects CSS/HTML directly into Streamlit's main page, not an iframe.
@@ -2007,7 +2039,29 @@ class SigmaAssistant:
         bubble_bg = "#ffffff" if is_light else "#1F2937"
         bubble_text = "#0f172a" if is_light else "#ffffff"
         bubble_border = "rgba(15, 23, 42, 0.16)" if is_light else "rgba(148, 163, 184, 0.18)"
-        mascot_fill = "#ffffff" if is_light else "#F9FAFB"
+        
+        # Calculate dynamic shape based on Cp
+        try:
+            cp_val = float(cp)
+        except (ValueError, TypeError):
+            cp_val = 1.0
+        cp_val = max(0.5, min(2.0, cp_val))
+        
+        # High Cp = narrow (scale_x < 1), tall (scale_y > 1)
+        scale_x = max(0.6, min(1.5, 1.0 / cp_val))
+        scale_y = max(0.8, min(1.2, cp_val))
+        
+        left_x = 55 - 35 * scale_x
+        right_x = 55 + 35 * scale_x
+        c1_x = 55 - 50 * scale_x
+        c2_x = 55 + 50 * scale_x
+        top_y = 110 - 90 * scale_y
+        
+        body_path = f"M {left_x} 110 C {left_x} 110, {c1_x} {top_y}, 55 {top_y} C {c2_x} {top_y}, {right_x} 110, {right_x} 110 Z"
+        face_dy = top_y - 30
+        shadow_rx = 35 * scale_x
+        
+        mascot_fill = f"{color}22"  # 13% opacity tint
         shadow_rgba = "rgba(15,23,42,0.14)" if is_light else "rgba(0,0,0,0.25)"
 
         # Animation name based on state
@@ -2121,12 +2175,12 @@ class SigmaAssistant:
                 <filter id="sigma-shadow"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/></filter>
             </defs>
             <!-- Shadow -->
-            <ellipse cx="55" cy="115" rx="35" ry="8" fill="black" opacity="0.15" filter="url(#sigma-shadow)"/>
+            <ellipse cx="55" cy="115" rx="{shadow_rx}" ry="8" fill="black" opacity="0.15" filter="url(#sigma-shadow)"/>
             <!-- Body -->
-            <path d="M 20 110 C 20 110, 5 20, 55 20 C 105 20, 90 110, 90 110 Z" 
-                  fill="{mascot_fill}" stroke="{color}" stroke-width="4" stroke-linejoin="round"/>
+            <path d="{body_path}" 
+                  fill="{mascot_fill}" stroke="{color}" stroke-width="5" stroke-linejoin="round"/>
             <!-- Face -->
-            <g transform="translate(0, -10)">
+            <g transform="translate(0, {face_dy})">
                 <!-- Eyebrows -->
                 <g transform="{eyebrow_left}">
                     <path d="M -8 0 Q 0 -5 8 0" fill="none" stroke="#4B5563" stroke-width="3" stroke-linecap="round"/>
@@ -2238,14 +2292,14 @@ class Chatbot:
             # --- Control Charts ---
             {"context": "Control Charts Overview", "text": "### I-MR Control Charts\n\nThe **Individuals and Moving Range (I-MR)** chart tracks continuous data when subgroup size $n=1$.\n\n*   **I-Chart (Individuals):** Plots individual observations. The Center Line (CL) is the overall average $\\bar{x}$. Control limits are $\\bar{x} \\pm 3\\sigma$.\n*   **MR-Chart (Moving Range):** Plots the absolute difference between consecutive points $|x_i - x_{i-1}|$. It tracks process variation over time. The MR upper limit is $D_4 \\times \\overline{MR}$ (where $D_4 = 3.267$ for $n=2$)."},
             
-            # --- Western Electric / Nelson Rules ---
-            {"context": "SPC Rules (Out of Control)", "text": "### Out of Control Rules\n\nThis app checks for specific patterns indicating non-random (special cause) variation:\n\n1.  **Rule 1 (1 point > 3σ):** Any single point falls outside the Upper or Lower Control Limit (UCL/LCL). Indicates an immediate spike or failure.\n2.  **Rule 2 (2 of 3 > 2σ):** Two out of three consecutive points fall beyond the 2σ warning limit on the same side of the mean. Indicates a process shift is developing.\n3.  **Rule 3 (4 of 5 > 1σ):** Four out of five consecutive points fall beyond 1σ on the same side. Shows a steady drift.\n4.  **Rule 4 (8+ points on one side):** Eight consecutive points fall entirely on one side of the center line. Indicates a sustained shift in the process mean.\n5.  **Rule 5 (6 points trending):** Six consecutive points are steadily increasing or strictly decreasing. Indicates a constant trend (e.g., tool wear, thermal drift)."},
+            # --- Nelson Rules ---
+            {"context": "SPC Rules (Nelson Rules)", "text": "### Nelson Rules Checked by This App\n\nThis app checks eight Nelson-rule patterns indicating non-random or special-cause variation:\n\n1.  **Rule 1:** One point more than 3σ from the mean.\n2.  **Rule 2:** Nine consecutive points on the same side of the mean.\n3.  **Rule 3:** Six consecutive points steadily increasing or decreasing.\n4.  **Rule 4:** Fourteen consecutive points alternating up/down.\n5.  **Rule 5:** Two of three consecutive points more than 2σ from the mean on the same side.\n6.  **Rule 6:** Four of five consecutive points more than 1σ from the mean on the same side.\n7.  **Rule 7:** Fifteen consecutive points within ±1σ of the mean.\n8.  **Rule 8:** Eight consecutive points outside ±1σ, with points on both sides of the mean."},
             
             # --- Troubleshooting & Actions ---
             {"context": "Troubleshooting (Low Cpk)", "text": "### What to do if Cpk is low?\n\n1.  **Check Cp vs Cpk:** If Cp is high (e.g., > 1.33) but Cpk is low (e.g., < 1.0), your variation is fine, but the process is not centered. **Action:** Adjust your machine offset or tooling to shift the mean by the `Required Shift (Δ)`.\n2.  **If Cp is also low:** The process variation is simply too large for the tolerance. Centering won't fix it. **Action:** You must reduce variation (investigate machine vibration, raw material changes, operator inconsistency) or ask engineering to widen the tolerance (`Required Tolerance`).\n3.  **Check Control Charts:** Is the process stable? If the I-Chart shows a massive trend or out-of-control points, Cpk is meaningless. Fix the stability issue first."},
 
             # --- Hypothesis Testing ---
-            {"context": "Hypothesis (Z-Test)", "text": "### Z-Test for Centering\n\nThe app performs a 1-sample Z-test to statistically prove if the mean has drifted from the Target (Tₘ).\n\n*   **$H_0$ (Null):** Mean = Tₘ (On target)\n*   **$H_1$ (Alt):** Mean ≠ Tₘ (Off target)\n*   **p-value < 0.05**: Reject $H_0$. Strong evidence the process has shifted.\n*   **p-value ≥ 0.05**: Cannot reject $H_0$. Process is statistically centered."},
+            {"context": "Hypothesis (t-Test)", "text": "### One-Sample t-Test for Centering\n\nThe app uses the sample standard deviation to test whether the process mean has drifted from the Target (Tₘ), so it applies a one-sample t-test and t-based confidence interval.\n\n*   **$H_0$ (Null):** Mean = Tₘ (On target)\n*   **$H_1$ (Alt):** Mean ≠ Tₘ, Mean > Tₘ, or Mean < Tₘ depending on the selected test type.\n*   **p-value < α**: Reject $H_0$. Evidence suggests the process mean has shifted in the selected direction.\n*   **p-value ≥ α**: Cannot reject $H_0$. There is not enough evidence of a mean shift."},
             
             # --- Application Status / Context ---
             {"context": "Current Status Inquiry", "text": "It looks like you want to know about your current data. If you have run an analysis, I can see the results and give you specific advice. Just ask 'How is my process doing?' or 'What is my current Cpk?'"}
@@ -2329,7 +2383,7 @@ class Chatbot:
                     "- **Indices:** Cp, Cpk, Pp, Ppk\n"
                     "- **Status:** 'How is my process doing?'\n"
                     "- **Rules:** Out of control, Nelson rules, warning limits\n"
-                    "- **Concepts:** PPM, Z-test, standard deviation, tolerance")
+                    "- **Concepts:** PPM, t-test, standard deviation, tolerance")
 
 
 # --- Main App ---
@@ -3347,7 +3401,7 @@ with tab_analysis:
                 )
                 st.text_input(
                     "Distribution",
-                    value="Normal (automotive dimensional data default)",
+                    value="Normal",
                     disabled=True,
                     help="Dimensional capability calculations in this tool use the standard normal-process assumption.",
                 )
@@ -3626,7 +3680,7 @@ with tab_analysis:
                         5: "Rule 5: 2 of 3 points > 2σ (same side)",
                         6: "Rule 6: 4 of 5 points > 1σ (same side)",
                         7: "Rule 7: 15 points within ±1σ",
-                        8: "Rule 8: 8 points > ±1σ (avoiding center)"
+                        8: "Rule 8: 8 points outside ±1σ on both sides"
                     }
                     for r, idxs in nelson_rules.items():
                         if idxs:
@@ -4246,18 +4300,8 @@ with tab_viz:
                         # Slice data
                         data_points = data_points_all[:effective_n]
                         n = len(data_points)
-                        x_bar = float(np.mean(data_points))
+                        x_bar = float(np.mean(data_points)) if n > 0 else 0.0
                         s = float(np.std(data_points, ddof=1)) if n >= 2 else 0.0
-
-                        # ±1σ zone lines
-                        plus_1s = x_bar + 1 * s
-                        minus_1s = x_bar - 1 * s
-
-                        # I-MR constants
-                        ucl = x_bar + 3 * s
-                        lcl = x_bar - 3 * s
-                        uwl = x_bar + 2 * s
-                        lwl = x_bar - 2 * s
 
                         # Specification lines from characteristic state
                         _lsl = float(viz_char_state.get("lsl", 0))
@@ -4268,6 +4312,15 @@ with tab_viz:
                         mr_values = [abs(data_points[i] - data_points[i - 1]) for i in range(1, n)]
                         mr_bar = float(np.mean(mr_values)) if mr_values else 0.0
                         mr_ucl = 3.267 * mr_bar  # D4 for n=2
+                        control_sigma = mr_bar / 1.128 if mr_bar > 0 else s
+
+                        # I-MR individual chart limits use moving-range sigma (MRbar / d2, d2=1.128 for n=2).
+                        plus_1s = x_bar + control_sigma
+                        minus_1s = x_bar - control_sigma
+                        ucl = x_bar + 3 * control_sigma
+                        lcl = x_bar - 3 * control_sigma
+                        uwl = x_bar + 2 * control_sigma
+                        lwl = x_bar - 2 * control_sigma
 
                         # ====== I-CHART ======
                         fig_control = go.Figure()
@@ -4367,15 +4420,7 @@ with tab_viz:
                                 )
                             )
 
-                        # Out-of-control points (Nelson rules instead of just Rule 1)
-                        if res and "nelson_rules" in res:
-                            nelson_rules = res["nelson_rules"]
-                            ooc_indices_set = set()
-                            for rule_indices in nelson_rules.values():
-                                ooc_indices_set.update(rule_indices)
-                            ooc_indices = sorted(list(ooc_indices_set))
-                        else:
-                            ooc_indices = [i for i, v in enumerate(data_points) if v > ucl or v < lcl]
+                        ooc_indices = [i for i, v in enumerate(data_points) if v > ucl or v < lcl]
                         
                         if ooc_indices:
                             fig_control.add_trace(
@@ -4476,7 +4521,8 @@ with tab_viz:
 | x̄ (Mean) | `{x_bar:.5f}` |
 | Target (Tₘ) | `{_tm:.3f}` |
 | Shift (Δ) | `{x_bar - _tm:.5f}` |
-| σ | `{s:.5f}` |
+| σ (sample) | `{s:.5f}` |
+| σ (I-MR) | `{control_sigma:.5f}` |
 | n | `{n}` |
 """)
 
@@ -4518,7 +4564,7 @@ with tab_viz:
 | Zone A (±2-3σ) | `{_zone_a}` | `{_zone_a/n*100:.1f}%` |
 | Zone B (±1-2σ) | `{_zone_b}` | `{_zone_b/n*100:.1f}%` |
 | Zone C (±1σ) | `{_zone_c}` | `{_zone_c/n*100:.1f}%` |
-| OOC (>3σ) | `{len(ooc_indices)}` | `{len(ooc_indices)/n*100:.1f}%` |
+| OOC (>3σ I-MR) | `{len(ooc_indices)}` | `{len(ooc_indices)/n*100:.1f}%` |
 | > USL | `{_ppm_above}` | `{_ppm_above/n*100:.2f}%` |
 | < LSL | `{_ppm_below}` | `{_ppm_below/n*100:.2f}%` |
 | MR̄ | `{mr_bar:.5f}` | — |
@@ -5212,9 +5258,10 @@ with tab_ref:
 | **Pp** | (USL − LSL) / 6σ_overall | Long-term potential performance |
 | **Ppk** | min[(USL − x̄)/3σ_overall, (x̄ − LSL)/3σ_overall] | Long-term actual performance |
 | **Shift (Δ)** | Tₘ − x̄ | Required mean adjustment |
-| **Z-score** | (x̄ − Tₘ) / (σ / √n) | Hypothesis test statistic |
-| **UCL** | x̄ + 3σ | Upper control limit |
-| **LCL** | x̄ − 3σ | Lower control limit |
+| **t-statistic** | (x̄ − Tₘ) / (s / √n) | Hypothesis test statistic |
+| **I-MR σ** | MR̄ / 1.128 | Moving-range estimate for individual control limits |
+| **UCL** | x̄ + 3(MR̄ / 1.128) | Upper I-chart control limit |
+| **LCL** | x̄ − 3(MR̄ / 1.128) | Lower I-chart control limit |
 | **MR̄** | Σ|Xᵢ − Xᵢ₋₁| / (n−1) | Average moving range |
 | **MR UCL** | 3.267 × MR̄ | MR chart upper control limit |
 """)
@@ -5229,12 +5276,15 @@ with tab_ref:
 | **Zone A** | x̄ ± 2σ to ± 3σ | 4.28% | Red (warning) |
 | **Outside** | Beyond ± 3σ | 0.27% | Out of Control |
 
-**Western Electric Rules for detecting out-of-control conditions:**
+**Nelson Rules for detecting out-of-control conditions:**
 1. Any single point beyond ±3σ
-2. Two of three consecutive points beyond ±2σ (same side)
-3. Four of five consecutive points beyond ±1σ (same side)
-4. Eight consecutive points on the same side of CL
-5. Six consecutive points trending up or down
+2. Nine consecutive points on the same side of CL
+3. Six consecutive points trending up or down
+4. Fourteen consecutive points alternating up/down
+5. Two of three consecutive points beyond ±2σ (same side)
+6. Four of five consecutive points beyond ±1σ (same side)
+7. Fifteen consecutive points within ±1σ
+8. Eight consecutive points outside ±1σ with both sides represented
 """)
 
         # --- Industry Standards ---
@@ -5271,7 +5321,7 @@ This tool is primarily utilized in **Six Sigma and SPC** environments for **Proc
 
         with st.expander("📖 Hypothesis Testing & Confidence Level"):
             st.markdown("""
-This tool performs a **Z-test** to determine if μ ≠ Tₘ:
+This tool performs a **one-sample t-test** to determine if μ differs from Tₘ:
 -   **H₀: μ = Tₘ** (on target) vs. **H₁: μ ≠ Tₘ** (shifted)
 -   **p-value < 0.05** → Reject H₀ (significant shift detected)
 -   **p-value ≥ 0.05** → Fail to Reject H₀ (no significant evidence of shift)
@@ -5319,13 +5369,23 @@ This tool performs a **Z-test** to determine if μ ≠ Tₘ:
             # Get active characteristic context
             context_data = None
             if hasattr(st.session_state, "characteristics") and st.session_state.characteristics:
-                # Get the first available characteristic for context
-                first_char_name = list(st.session_state.characteristics.keys())[0]
-                char_data = st.session_state.characteristics[first_char_name]
+                active_chat_name = st.session_state.get(
+                    "active_characteristic_name",
+                    list(st.session_state.characteristics.keys())[0],
+                )
+                if active_chat_name not in st.session_state.characteristics:
+                    active_chat_name = list(st.session_state.characteristics.keys())[0]
+                char_data = st.session_state.characteristics[active_chat_name]
+                result_rules = char_data.get("results", {}).get("nelson_rules", {})
+                failed_rules = [
+                    f"{NELSON_RULE_NAMES.get(rule_no, f'Rule {rule_no}')} ({len(indices)} occurrence{'s' if len(indices) != 1 else ''})"
+                    for rule_no, indices in result_rules.items()
+                    if indices
+                ]
                 context_data = {
-                    "name": first_char_name,
+                    "name": active_chat_name,
                     "stats": char_data.get("results", {}),
-                    "failed_rules": char_data.get("failed_rules", [])
+                    "failed_rules": failed_rules,
                 }
             
             # Get bot response with context
@@ -5344,5 +5404,6 @@ This tool performs a **Z-test** to determine if μ ≠ Tₘ:
 mascot_html = SigmaAssistant.render_fixed(
     state=st.session_state.get("mascot_state", "idle"),
     message=st.session_state.get("mascot_message", None),
+    cp=st.session_state.get("mascot_cp", 1.0),
 )
 st.markdown(mascot_html, unsafe_allow_html=True)
