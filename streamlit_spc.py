@@ -89,16 +89,6 @@ class StatisticalCalculator:
     def standard_normal_cdf(self, z):
         return 0.5 * (1 + self.erf(z / math.sqrt(2)))
 
-    def get_critical_value(self, cl, type):
-        alpha = 1 - (cl / 100.0)
-        if type == "Two-Sided":
-            return stats.norm.ppf(1 - alpha / 2)
-        elif type == "Upper-Sided":
-            return stats.norm.ppf(1 - alpha)
-        else:  # Lower-Sided
-            return stats.norm.ppf(
-                alpha
-            )  # Note: This will be negative, handle in CI calculation
 
     def validate(self, params):
         LSL = params.get("lsl")
@@ -526,28 +516,44 @@ class PlotManager:
     PLOT_CONFIG = {
         "displayModeBar": True,
         "displaylogo": False,
-        "modeBarButtonsToAdd": ["drawline", "eraseshape"],
-        "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+        "modeBarButtonsToAdd": [],
+        "modeBarButtonsToRemove": ["lasso2d", "select2d", "autoScale2d"],
         "toImageButtonOptions": {
             "format": "png",
-            "filename": "capability_chart",
+            "filename": "spc_chart",
             "height": 600,
-            "width": 1000,
+            "width": 1100,
             "scale": 2,
         },
-        "scrollZoom": True,
+        # scrollZoom=False prevents the chart from hijacking page scroll
+        "scrollZoom": False,
+        "responsive": True,
     }
 
-    def generate_pdf_data(self, dist_type, params, x_min, x_max, points=200):
+    # Separate config for control/time-series charts where scroll-zoom is useful
+    CONTROL_CONFIG = {
+        "displayModeBar": True,
+        "displaylogo": False,
+        "modeBarButtonsToRemove": ["lasso2d", "select2d", "autoScale2d"],
+        "toImageButtonOptions": {
+            "format": "png",
+            "filename": "control_chart",
+            "height": 500,
+            "width": 1200,
+            "scale": 2,
+        },
+        "scrollZoom": False,
+        "responsive": True,
+    }
+
+    def generate_pdf_data(self, dist_type, params, x_min, x_max, points=300):
+        """Generate smooth PDF curve data. 300 points for crisp zoom at any scale."""
         x = np.linspace(x_min, x_max, points)
         y = np.zeros_like(x)
-
-        # Use vectorized scipy.stats for ~100x faster PDF generation
         if dist_type == "Normal" and params.get("stdDev", 0) > 0:
             y = stats.norm.pdf(x, loc=params["mean"], scale=params["stdDev"])
         elif dist_type == "Lognormal" and params.get("sigma_log", 0) > 0:
             y = stats.lognorm.pdf(x, s=params["sigma_log"], scale=np.exp(params["mu_log"]))
-
         return x, np.nan_to_num(y)
 
     def update_plots(self, results):
@@ -662,9 +668,10 @@ class PlotManager:
             if valid_y:
                 max_pdf_y = max(valid_y) * 1.1
 
-        # Theme-adaptive font color (readable in both light and dark mode)
-        _fc = _plot_font
+        # ── Shared layout defaults for capability distribution plots ────────
+        _ui_rev = f"cap_{results.get('x_bar',0):.6f}_{results.get('s',0):.6f}"
         layout_defaults = {
+            "uirevision": _ui_rev,   # keeps zoom/pan state across Streamlit reruns
             "xaxis": {
                 "title": {"text": "Measurement Value", "font": {"color": _fc, "size": 11}},
                 "range": [x_min, x_max],
@@ -673,61 +680,68 @@ class PlotManager:
                 "tickfont": {"size": 10, "color": _fc},
                 "gridcolor": _plot_grid,
                 "linecolor": _plot_line,
+                "fixedrange": False,   # allow x-axis zoom/pan
+                # Spike line shown on hover — lightweight, no rendering cost
                 "showspikes": True,
                 "spikemode": "across",
                 "spikesnap": "cursor",
-                "spikecolor": "#888",
-                "spikethickness": 0.5,
+                "spikecolor": _plot_line,
+                "spikethickness": 1,
                 "spikedash": "dot",
+                "automargin": True,
             },
             "yaxis": {
                 "title": {"text": "Density" if s > 0 else "", "font": {"color": _fc, "size": 11}},
-                "tickformat": ".2f" if s > 0 else "",
-                "fixedrange": False,
+                "tickformat": ".3f" if s > 0 else "",
+                # fixedrange=True on Y prevents accidental Y-only zoom on distribution plots
+                # (the PDF curve shape is meaningful only in its full context)
+                "fixedrange": True,
                 "range": [0, max_pdf_y],
                 "tickfont": {"size": 10, "color": _fc},
                 "showticklabels": bool(s > 0),
                 "gridcolor": _plot_grid,
                 "linecolor": _plot_line,
-                "showspikes": True,
-                "spikemode": "across",
-                "spikesnap": "cursor",
-                "spikecolor": "#888",
-                "spikethickness": 0.5,
-                "spikedash": "dot",
+                "showspikes": False,  # Y spike is distracting on distribution plots
+                "automargin": True,
             },
-            "height": 380,
-            "margin": {"t": 55, "b": 65, "l": 55, "r": 25},
+            "height": 390,
+            "margin": {"t": 55, "b": 75, "l": 60, "r": 30},
             "showlegend": True,
             "legend": {
                 "orientation": "h",
-                "y": -0.22,
+                "y": -0.25,
                 "x": 0.5,
                 "xanchor": "center",
                 "bgcolor": _plot_legend_bg,
                 "bordercolor": _plot_line,
                 "borderwidth": 1,
-                "font": {"size": 10, "color": _fc},
+                "font": {"size": 9, "color": _fc},
+                # Clip legend to prevent overflow outside chart area
+                "entrywidthmode": "fraction",
+                "entrywidth": 0.28,
             },
             "hovermode": "x unified",
             "hoverlabel": {
                 "font_size": 11,
-                "namelength": -1,
+                "namelength": 30,
                 "bgcolor": _plot_hover_bg,
                 "font_color": _plot_hover_text,
                 "bordercolor": _plot_line,
             },
-            "dragmode": "zoom",
+            # pan is safer default than zoom — user can still box-zoom via toolbar
+            "dragmode": "pan",
             "modebar": {
                 "orientation": "v",
                 "bgcolor": "rgba(0,0,0,0)",
                 "color": _fc,
+                "activecolor": _fc,
             },
             "paper_bgcolor": "rgba(0,0,0,0)",
             "plot_bgcolor": "rgba(0,0,0,0)",
-            "font": {"color": _fc},
+            "font": {"color": _fc, "size": 11},
+            # Keep transitions smooth — no animation flash on rerun
+            "transition": {"duration": 0},
         }
-        # Note: PLOT_CONFIG is now defined at class level
 
         # Plot 1: Current Process
         fig_before = go.Figure()
@@ -1045,6 +1059,7 @@ class PlotManager:
 
             fig_hist.update_layout(
                 title={"text": "3. Data Frequency Distribution", "font": {"size": 12, "color": _fc}},
+                uirevision=f"hist_{results.get('x_bar',0):.6f}",
                 xaxis={
                     "title": {"text": "Value", "font": {"color": _fc, "size": 11}},
                     "range": [x_min, x_max],
@@ -1052,41 +1067,60 @@ class PlotManager:
                     "tickfont": {"size": 10, "color": _fc},
                     "gridcolor": _plot_grid,
                     "linecolor": _plot_line,
+                    "fixedrange": False,
+                    "automargin": True,
+                    "showspikes": True,
+                    "spikemode": "across",
+                    "spikesnap": "cursor",
+                    "spikecolor": _plot_line,
+                    "spikethickness": 1,
+                    "spikedash": "dot",
                 },
                 yaxis={
                     "title": {"text": "Frequency (Count)", "font": {"color": _fc, "size": 11}},
-                    "fixedrange": True,
+                    "fixedrange": False,  # allow Y zoom so users can inspect bin heights
                     "tickfont": {"size": 10, "color": _fc},
                     "gridcolor": _plot_grid,
                     "linecolor": _plot_line,
+                    "automargin": True,
                 },
-                height=380,
-                bargap=0.05,
+                height=390,
+                bargap=0.04,
                 shapes=shapes_hist,
                 annotations=annotations_hist,
-                margin={"t": 55, "b": 65, "l": 55, "r": 25},
+                margin={"t": 55, "b": 75, "l": 60, "r": 30},
                 showlegend=True,
                 legend={
                     "orientation": "h",
-                    "y": -0.22,
+                    "y": -0.25,
                     "x": 0.5,
                     "xanchor": "center",
                     "bgcolor": _plot_legend_bg,
                     "bordercolor": _plot_line,
                     "borderwidth": 1,
-                    "font": {"size": 10, "color": _fc},
+                    "font": {"size": 9, "color": _fc},
+                    "entrywidthmode": "fraction",
+                    "entrywidth": 0.28,
                 },
-                hovermode="x unified",
+                hovermode="x",
                 hoverlabel={
                     "font_size": 11,
-                    "namelength": -1,
+                    "namelength": 30,
                     "bgcolor": _plot_hover_bg,
                     "font_color": _plot_hover_text,
                     "bordercolor": _plot_line,
                 },
+                dragmode="pan",
+                modebar={
+                    "orientation": "v",
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "color": _fc,
+                    "activecolor": _fc,
+                },
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": _fc},
+                font={"color": _fc, "size": 11},
+                transition={"duration": 0},
             )
 
         return fig_before, fig_after, fig_hist
@@ -2208,66 +2242,712 @@ class SigmaAssistant:
 '''
         return html
 
+def _try_fig_to_png(fig, width=680, height=380):
+    """Convert a Plotly figure to PNG bytes. Returns None if kaleido unavailable."""
+    if fig is None:
+        return None
+    try:
+        return fig.to_image(format="png", width=width, height=height, scale=1.5)
+    except Exception:
+        return None
+
+
+def _xl_cell(ws, row, col, value, font=None, fill=None, align=None, number_format=None, border=None):
+    """Helper: write a cell with optional styling."""
+    cell = ws.cell(row=row, column=col, value=value)
+    if font:
+        cell.font = font
+    if fill:
+        cell.fill = fill
+    if align:
+        cell.alignment = align
+    if number_format:
+        cell.number_format = number_format
+    if border:
+        cell.border = border
+    return cell
+
+
 def generate_full_report_excel(characteristics):
     from openpyxl.drawing.image import Image as OpenpyxlImage
     from openpyxl.styles import Font, Alignment
     
+    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.utils import get_column_letter
+
+    # ── Shared style objects ──────────────────────────────────────────
+    F = Font
+    A = Alignment
+    P = PatternFill
+    B = Border
+    S = Side
+
+    def _f(bold=False, sz=10, color="1F2937", italic=False, name="Calibri"):
+        return F(name=name, bold=bold, size=sz, color=color, italic=italic)
+
+    def _p(hex_color):
+        return P(start_color=hex_color, end_color=hex_color, fill_type="solid")
+
+    def _a(h="left", v="center", wrap=False):
+        return A(horizontal=h, vertical=v, wrapText=wrap)
+
+    def _thin_border():
+        s = S(style="thin", color="D1D5DB")
+        return B(left=s, right=s, top=s, bottom=s)
+
+    def _fmt_val(val, decimals=4, default="N/A"):
+        if val is None:
+            return default
+        try:
+            if not np.isfinite(val):
+                return "∞" if val > 0 else "−∞"
+            return round(float(val), decimals)
+        except Exception:
+            return str(val)
+
     output = io.BytesIO()
     wb = Workbook()
-    wb.remove(wb.active)  # Remove default sheet
-    
-    for char_name, char_data in characteristics.items():
-        ws = wb.create_sheet(title=str(char_name)[:31])  # Excel sheet names max 31 chars
-        
-        # Title
-        ws.merge_cells("A1:G1")
-        title_cell = ws.cell(row=1, column=1, value=f"Statistical Analysis Report: {char_name}")
-        title_cell.font = Font(bold=True, size=16, color="1F2937")
-        title_cell.alignment = Alignment(horizontal="center", vertical="center")
-        
-        # Statistics
-        row_idx = 3
-        ws.cell(row=row_idx, column=1, value="Metric").font = Font(bold=True)
-        ws.cell(row=row_idx, column=2, value="Value").font = Font(bold=True)
-        row_idx += 1
-        
+    wb.remove(wb.active)
+
+    # ── SHEET 1: Summary across all characteristics ───────────────────
+    ws_sum = wb.create_sheet("Summary")
+    ws_sum.sheet_view.showGridLines = False
+    ws_sum.column_dimensions["A"].width = 28
+
+    # Title
+    ws_sum.merge_cells("A1:J1")
+    c = ws_sum.cell(1, 1, "SPC Full Report — Summary")
+    c.font = _f(bold=True, sz=16, color="FFFFFF")
+    c.fill = _p("0F172A")
+    c.alignment = _a("center")
+    ws_sum.row_dimensions[1].height = 32
+
+    ws_sum.merge_cells("A2:J2")
+    c2 = ws_sum.cell(2, 1, f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    c2.font = _f(sz=9, color="94A3B8", italic=True)
+    c2.fill = _p("1E293B")
+    c2.alignment = _a("center")
+
+    # Header row
+    sum_headers = ["Characteristic", "Cp", "Cpk", "Verdict", "Shift (Δ)", "Tm", "LSL", "USL", "PPM<LSL", "PPM>USL"]
+    for ci, h in enumerate(sum_headers, 1):
+        cell = ws_sum.cell(4, ci, h)
+        cell.font = _f(bold=True, sz=9, color="FFFFFF")
+        cell.fill = _p("1E3A5F")
+        cell.alignment = _a("center")
+        cell.border = _thin_border()
+        ws_sum.column_dimensions[get_column_letter(ci)].width = 16 if ci > 1 else 28
+
+    alt_fills = [_p("F8FAFC"), _p("EEF4FB")]
+    verdict_fills = {"GOOD": ("D1FAE5", "065F46"), "MARGINAL": ("FEF3C7", "92400E"), "ACTION": ("FEE2E2", "991B1B")}
+
+    for ri, (char_name, char_data) in enumerate(characteristics.items(), 5):
         res = char_data.get("results", {})
-        for key, val in res.items():
-            if isinstance(val, (int, float, str)) and key not in ["histogram_data", "figs", "id"]:
-                ws.cell(row=row_idx, column=1, value=str(key))
-                if isinstance(val, float) and np.isfinite(val):
-                    ws.cell(row=row_idx, column=2, value=round(val, 4))
-                else:
-                    ws.cell(row=row_idx, column=2, value=str(val))
-                row_idx += 1
-                
-        # Auto-fit columns
-        ws.column_dimensions['A'].width = 25
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 5
-        
-        # Charts
-        chart_start_row = 3
-        chart_col = "D"
+        verdict = res.get("verdict", char_data.get("summary", {}).get("verdict", "N/A"))
+        vkey = "GOOD" if "GOOD" in str(verdict) else ("MARGINAL" if "MARGINAL" in str(verdict) else "ACTION")
+        vfill, vfont = verdict_fills.get(vkey, ("F1F5F9", "334155"))
+        row_fill = alt_fills[ri % 2]
+
+        row_vals = [
+            char_name,
+            _fmt_val(res.get("Cp"), 3),
+            _fmt_val(res.get("CpkCurrent"), 3),
+            verdict,
+            _fmt_val(res.get("shiftValue"), 4),
+            _fmt_val(res.get("tm"), 4),
+            _fmt_val(res.get("lsl"), 4),
+            _fmt_val(res.get("usl"), 4),
+            _fmt_val(res.get("ppm_below"), 1),
+            _fmt_val(res.get("ppm_above"), 1),
+        ]
+        for ci, val in enumerate(row_vals, 1):
+            cell = ws_sum.cell(ri, ci, val)
+            cell.font = _f(sz=9, color=vfont if ci == 4 else "1F2937", bold=(ci == 4))
+            cell.fill = _p(vfill) if ci == 4 else row_fill
+            cell.alignment = _a("center" if ci > 1 else "left")
+            cell.border = _thin_border()
+
+    # ── PER-CHARACTERISTIC SHEETS ──────────────────────────────────────
+    for char_name, char_data in characteristics.items():
+        safe_title = str(char_name)[:31]
+        ws = wb.create_sheet(title=safe_title)
+        ws.sheet_view.showGridLines = False
+
+        res = char_data.get("results", {})
+        summary_data = char_data.get("summary", {})
         figs = char_data.get("figs", {})
-        
-        for fig_key in ["before", "after", "hist"]:
-            fig = figs.get(fig_key)
-            if fig:
+        dp = int(res.get("dp", 3) or 3)
+        verdict = res.get("verdict", summary_data.get("verdict", "N/A"))
+        vkey = "GOOD" if "GOOD" in str(verdict) else ("MARGINAL" if "MARGINAL" in str(verdict) else "ACTION")
+        vfill, vfont = verdict_fills.get(vkey, ("F1F5F9", "334155"))
+
+        # Column widths
+        ws.column_dimensions["A"].width = 32
+        ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["C"].width = 28
+        for col in ["D", "E", "F", "G", "H"]:
+            ws.column_dimensions[col].width = 14
+
+        row = 1
+        # Title
+        ws.merge_cells(f"A{row}:H{row}")
+        c = ws.cell(row, 1, f"Capability Report — {char_name}")
+        c.font = _f(bold=True, sz=15, color="FFFFFF")
+        c.fill = _p("0F172A")
+        c.alignment = _a("center")
+        ws.row_dimensions[row].height = 30
+        row += 1
+
+        ws.merge_cells(f"A{row}:H{row}")
+        c = ws.cell(row, 1, f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}   |   Distribution: {res.get('distribution', 'Normal')}   |   Mode: {str(res.get('mode','N/A')).replace('import','Worksheet').replace('manual','Manual')}")
+        c.font = _f(sz=8, color="94A3B8", italic=True)
+        c.fill = _p("1E293B")
+        c.alignment = _a("center")
+        row += 1
+
+        # Verdict banner
+        ws.merge_cells(f"A{row}:H{row}")
+        c = ws.cell(row, 1, verdict)
+        c.font = _f(bold=True, sz=13, color=vfont)
+        c.fill = _p(vfill)
+        c.alignment = _a("center")
+        ws.row_dimensions[row].height = 24
+        row += 2
+
+        # Key metrics 4-column mini-table
+        def _section_header(label, r):
+            ws.merge_cells(f"A{r}:H{r}")
+            c = ws.cell(r, 1, label)
+            c.font = _f(bold=True, sz=10, color="FFFFFF")
+            c.fill = _p("1E3A5F")
+            c.alignment = _a("left")
+            ws.row_dimensions[r].height = 18
+            return r + 1
+
+        def _row2(r, label, val, note=""):
+            ws.cell(r, 1, label).font = _f(bold=True, sz=9, color="334155")
+            v = ws.cell(r, 2, val)
+            v.font = _f(sz=9, color="0F172A")
+            v.alignment = _a("right")
+            if note:
+                n = ws.cell(r, 3, note)
+                n.font = _f(sz=8, color="64748B", italic=True)
+            for ci in range(1, 4):
+                ws.cell(r, ci).border = _thin_border()
+                ws.cell(r, ci).fill = _p("F8FAFC") if r % 2 == 0 else _p("FFFFFF")
+            return r + 1
+
+        row = _section_header("📋  INPUT PARAMETERS", row)
+        row = _row2(row, "Target Mean (Tₘ)", _fmt_val(res.get("tm"), dp))
+        row = _row2(row, "Lower Spec Limit (LSL)", _fmt_val(res.get("lsl"), dp))
+        row = _row2(row, "Upper Spec Limit (USL)", _fmt_val(res.get("usl"), dp))
+        row = _row2(row, "Measured Mean (x̄)", _fmt_val(res.get("x_bar"), dp))
+        row = _row2(row, "Std Deviation (σ)", _fmt_val(res.get("s"), dp + 2))
+        row = _row2(row, "Sample Size (n)", res.get("n_samples", "N/A"))
+        row = _row2(row, "Target Index", f"{res.get('target_index_type','Cpk')} ≥ {_fmt_val(res.get('target_index_value'), 2)}")
+        row = _row2(row, "Confidence Level", f"{res.get('confidence_level', 95)}%")
+        row = _row2(row, "Hypothesis Type", res.get("hypothesis_type", "Two-Sided"))
+        row += 1
+
+        row = _section_header("📊  CALCULATED RESULTS", row)
+        row = _row2(row, "Drawing Tolerance (USL − LSL)", _fmt_val(res.get("T_drawing"), dp), "Specification band")
+        row = _row2(row, "6σ Spread", _fmt_val(res.get("sixSigmaSpread"), dp), "99.73% of output")
+        row = _row2(row, "8σ Spread", _fmt_val(res.get("eightSigmaSpread"), dp), "99.9937% of output")
+        row = _row2(row, "Cp (Potential Capability)", _fmt_val(res.get("Cp"), dp), "Centered potential")
+        row = _row2(row, f"{res.get('target_index_type','Cpk')} (Actual Capability)", _fmt_val(res.get("CpkCurrent"), dp), f"Target ≥ {_fmt_val(res.get('target_index_value'), 2)}")
+        row = _row2(row, "Required Shift (Δ)", _fmt_val(res.get("shiftValue"), dp), "Mean adjustment needed")
+        row = _row2(row, "Required Tolerance", _fmt_val(res.get("newToleranceTotal"), dp), "Minimum spec band needed")
+        row = _row2(row, "x̄ − 3σ  /  x̄ + 3σ", f"{_fmt_val(res.get('minus3s'), dp)}  /  {_fmt_val(res.get('plus3s'), dp)}")
+        row = _row2(row, f"CI {res.get('confidence_level',95)}% Lower", _fmt_val(res.get("ci_lower"), dp))
+        row = _row2(row, f"CI {res.get('confidence_level',95)}% Upper", _fmt_val(res.get("ci_upper"), dp))
+        row += 1
+
+        row = _section_header("💥  PROBABILITY & DEFECTS", row)
+        ppm_b = res.get("ppm_below", 0.0) or 0.0
+        ppm_a = res.get("ppm_above", 0.0) or 0.0
+        prob_b = res.get("prob_below", 0.0) or 0.0
+        prob_a = res.get("prob_above", 0.0) or 0.0
+        row = _row2(row, "P(x < LSL)", f"{prob_b * 100:.{dp}f}%")
+        row = _row2(row, "P(x > USL)", f"{prob_a * 100:.{dp}f}%")
+        row = _row2(row, "PPM < LSL", f"{ppm_b:,.1f}")
+        row = _row2(row, "PPM > USL", f"{ppm_a:,.1f}")
+        row += 1
+
+        # Hypothesis Test
+        row = _section_header("🔬  HYPOTHESIS TEST (μ vs Tₘ)", row)
+        hypo = res.get("hypothesisResult", {})
+        p_val = hypo.get("p_value", np.nan)
+        alpha = hypo.get("alpha", np.nan)
+        t_stat = hypo.get("test_stat", np.nan)
+        df_val = hypo.get("degrees_of_freedom", np.nan)
+        hypo_conc = "N/A"
+        if np.isfinite(p_val) and np.isfinite(alpha):
+            hypo_conc = "Reject H₀ — significant shift" if p_val < alpha else "Fail to reject H₀ — no significant shift"
+        row = _row2(row, "t-Statistic", _fmt_val(t_stat, 4))
+        row = _row2(row, "Degrees of Freedom", int(df_val) if np.isfinite(df_val) else "N/A")
+        row = _row2(row, "p-Value", f"{p_val:.4e}" if np.isfinite(p_val) else "N/A")
+        row = _row2(row, "Alpha (α)", _fmt_val(alpha, 2))
+        row = _row2(row, "Conclusion", hypo_conc)
+        row += 1
+
+        # Nelson Rules
+        nelson = res.get("nelson_rules", {})
+        if nelson:
+            row = _section_header("📉  NELSON RULES — STATISTICAL EXCEPTIONS", row)
+            rule_names_map = {
+                1: "Rule 1: Point > 3σ from mean",
+                2: "Rule 2: 9 consecutive points same side",
+                3: "Rule 3: 6 consecutive trending",
+                4: "Rule 4: 14 consecutive alternating",
+                5: "Rule 5: 2 of 3 points > 2σ (same side)",
+                6: "Rule 6: 4 of 5 points > 1σ (same side)",
+                7: "Rule 7: 15 points within ±1σ",
+                8: "Rule 8: 8 points outside ±1σ (both sides)",
+            }
+            for rule_no, indices in sorted(nelson.items()):
+                status = "FAIL" if indices else "PASS"
+                sfill = "FEE2E2" if indices else "D1FAE5"
+                sfont = "991B1B" if indices else "065F46"
+                ws.cell(row, 1, rule_names_map.get(rule_no, f"Rule {rule_no}")).font = _f(sz=9)
+                sc = ws.cell(row, 2, status)
+                sc.font = _f(bold=True, sz=9, color=sfont)
+                sc.fill = _p(sfill)
+                sc.alignment = _a("center")
+                ws.cell(row, 3, f"{len(indices)} occurrence(s)").font = _f(sz=9, color="64748B")
+                for ci in [1, 2, 3]:
+                    ws.cell(row, ci).border = _thin_border()
+                row += 1
+            row += 1
+
+        # Embedded charts — column E onward
+        chart_anchor_row = 5
+        chart_col_start = 5  # column E
+        kaleido_ok = False
+        for fig_key, chart_label in [("before", "Current Process"), ("after", "Centered Process"), ("hist", "Data Histogram")]:
+            fig = figs.get(fig_key) if figs else None
+            png = _try_fig_to_png(fig)
+            if png:
+                kaleido_ok = True
                 try:
-                    # Kaleido package is required for to_image
-                    img_bytes = fig.to_image(format="png", width=700, height=400, scale=1.5)
-                    img = OpenpyxlImage(io.BytesIO(img_bytes))
-                    ws.add_image(img, f"{chart_col}{chart_start_row}")
-                    chart_start_row += 22  # Move down ~22 rows for next chart
-                except Exception as e:
+                    img = XLImage(io.BytesIO(png))
+                    img.width = 480
+                    img.height = 270
+                    anchor = f"{get_column_letter(chart_col_start)}{chart_anchor_row}"
+                    ws.add_image(img, anchor)
+                    chart_anchor_row += 19
+                except Exception:
                     pass
-            
+
+        if not kaleido_ok and figs:
+            ws.cell(row, 1, "⚠ Charts not embedded — install kaleido: pip install kaleido").font = _f(sz=8, color="92400E", italic=True)
+
     if len(wb.sheetnames) == 0:
         wb.create_sheet("Empty Report")
-        
+
     wb.save(output)
     return output.getvalue()
+
+
+# --- PDF Export Manager ---
+class PDFExportManager:
+    """Professional PDF reports using reportlab."""
+
+    @staticmethod
+    def _clean_html(text):
+        return re.sub(r'<[^>]+>', '', str(text or ''))
+
+    @staticmethod
+    def _verdict_rgb(verdict):
+        v = str(verdict).upper()
+        if "GOOD" in v:
+            return (0.06, 0.73, 0.34)
+        if "MARGINAL" in v:
+            return (0.97, 0.62, 0.03)
+        return (0.93, 0.27, 0.27)
+
+    @classmethod
+    def _fig_png(cls, fig, w=660, h=360):
+        if fig is None:
+            return None
+        try:
+            return fig.to_image(format="png", width=w, height=h, scale=1.5)
+        except Exception:
+            return None
+
+    @classmethod
+    def export_capability_pdf(cls, results, summary, figs, char_name):
+        """Multi-page capability report PDF for one characteristic."""
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import cm
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+                HRFlowable, Image as RLImage, PageBreak,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        except ImportError:
+            return None
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=1.8*cm, rightMargin=1.8*cm,
+                                topMargin=1.5*cm, bottomMargin=2.0*cm)
+        styles = getSampleStyleSheet()
+
+        def _rgb(r, g, b):
+            return colors.Color(r, g, b)
+
+        nav = _rgb(0.06, 0.09, 0.16)
+        acc = _rgb(0.15, 0.51, 0.93)
+        mut = _rgb(0.44, 0.51, 0.58)
+        lt  = _rgb(0.95, 0.97, 1.0)
+        wh  = colors.white
+
+        def _ps(name, sz=9, bold=False, color=None, align=TA_LEFT, space=3):
+            return ParagraphStyle(name, parent=styles["Normal"], fontSize=sz,
+                                  fontName="Helvetica-Bold" if bold else "Helvetica",
+                                  textColor=color or _rgb(0.12, 0.16, 0.24),
+                                  spaceAfter=space, leading=sz+4, alignment=align)
+
+        title_s   = _ps("T", 20, True, nav, TA_CENTER, 4)
+        sub_s     = _ps("S", 10, False, mut, TA_CENTER, 2)
+        sec_s     = _ps("Sec", 12, True, acc, TA_LEFT, 6)
+        body_s    = _ps("B", 9)
+        lbl_s     = _ps("L", 9, True)
+        cap_s     = _ps("C", 8, False, mut, TA_CENTER, 4)
+
+        dp = int(results.get("dp", 3) or 3)
+        verdict = summary.get("verdict", "N/A")
+        vr, vg, vb = cls._verdict_rgb(verdict)
+        v_color = _rgb(vr, vg, vb)
+
+        def _fmtv(val, d=None):
+            d = d if d is not None else dp
+            if val is None:
+                return "N/A"
+            try:
+                if not np.isfinite(val):
+                    return "∞" if val > 0 else "−∞"
+                return f"{val:.{d}f}"
+            except Exception:
+                return str(val)
+
+        def _tbl(data, col_widths, hdr_fill=None):
+            t = Table(data, colWidths=col_widths)
+            cmds = [
+                ("FONTSIZE",    (0,0), (-1,-1), 9),
+                ("TOPPADDING",  (0,0), (-1,-1), 5),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 5),
+                ("GRID",        (0,0), (-1,-1), 0.4, _rgb(0.7,0.74,0.78)),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1), [wh, lt]),
+                ("ALIGN",       (1,0), (-1,-1), "RIGHT"),
+            ]
+            if hdr_fill:
+                cmds += [
+                    ("BACKGROUND",(0,0),(-1,0), hdr_fill),
+                    ("TEXTCOLOR", (0,0),(-1,0), wh),
+                    ("FONTNAME",  (0,0),(-1,0), "Helvetica-Bold"),
+                ]
+            t.setStyle(TableStyle(cmds))
+            return t
+
+        story = []
+
+        # ── Cover ──────────────────────────────────────────────────
+        story.append(Spacer(1, 1.2*cm))
+
+        vban = Table([[Paragraph(f"<b>{verdict}</b>",
+                       ParagraphStyle("VB", parent=styles["Normal"], fontSize=15,
+                                      fontName="Helvetica-Bold", textColor=wh,
+                                      alignment=TA_CENTER, leading=20))]],
+                     colWidths=[16*cm])
+        vban.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),v_color),
+                                  ("TOPPADDING",(0,0),(-1,-1),12),
+                                  ("BOTTOMPADDING",(0,0),(-1,-1),12)]))
+        story.append(vban)
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph("Statistical Process Capability Report", title_s))
+        story.append(Paragraph(f"Characteristic: <b>{char_name}</b>", sub_s))
+        story.append(Paragraph(datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), sub_s))
+        story.append(Spacer(1, 0.4*cm))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=acc))
+        story.append(Spacer(1, 0.4*cm))
+
+        # Key metrics row
+        km_data = [
+            ["Cp (Potential)", "Cpk (Actual)", "Required Shift", "Required Tolerance"],
+            [Paragraph(f"<b><font size=17>{_fmtv(results.get('Cp'))}</font></b>",
+                       ParagraphStyle("KM1",parent=styles["Normal"],alignment=TA_CENTER,fontSize=17,fontName="Helvetica-Bold",textColor=acc)),
+             Paragraph(f"<b><font size=17>{_fmtv(results.get('CpkCurrent'))}</font></b>",
+                       ParagraphStyle("KM2",parent=styles["Normal"],alignment=TA_CENTER,fontSize=17,fontName="Helvetica-Bold",textColor=v_color)),
+             Paragraph(f"<b><font size=17>{_fmtv(results.get('shiftValue'))}</font></b>",
+                       ParagraphStyle("KM3",parent=styles["Normal"],alignment=TA_CENTER,fontSize=17,fontName="Helvetica-Bold",textColor=_rgb(0.12,0.16,0.24))),
+             Paragraph(f"<b><font size=17>{_fmtv(results.get('newToleranceTotal'))}</font></b>",
+                       ParagraphStyle("KM4",parent=styles["Normal"],alignment=TA_CENTER,fontSize=17,fontName="Helvetica-Bold",textColor=_rgb(0.12,0.16,0.24)))],
+        ]
+        km_tbl = Table(km_data, colWidths=[4*cm]*4)
+        km_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),nav),("TEXTCOLOR",(0,0),(-1,0),wh),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("BACKGROUND",(0,1),(-1,1),lt),
+            ("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),
+            ("BOX",(0,0),(-1,-1),1,acc),("GRID",(0,0),(-1,-1),0.4,_rgb(0.7,0.74,0.78)),
+        ]))
+        story.append(km_tbl)
+        story.append(Spacer(1, 0.5*cm))
+
+        # ── Inputs table ──────────────────────────────────────────
+        story.append(Paragraph("Input Parameters", sec_s))
+        inp = [
+            [Paragraph("<b>Parameter</b>", lbl_s), Paragraph("<b>Value</b>", lbl_s)],
+            ["Target Mean (Tₘ)",            _fmtv(results.get("tm"))],
+            ["LSL",                          _fmtv(results.get("lsl"))],
+            ["USL",                          _fmtv(results.get("usl"))],
+            ["Measured Mean (x̄)",           _fmtv(results.get("x_bar"))],
+            ["Std Deviation (σ)",            _fmtv(results.get("s"), dp+2)],
+            ["Sample Size (n)",              str(results.get("n_samples","N/A"))],
+            ["Target Index",                 f"{results.get('target_index_type','Cpk')} ≥ {_fmtv(results.get('target_index_value'),2)}"],
+            ["Confidence Level",             f"{results.get('confidence_level',95)}%"],
+            ["Hypothesis Type",              results.get("hypothesis_type","Two-Sided")],
+            ["Distribution",                 results.get("distribution","Normal")],
+        ]
+        story.append(_tbl(inp, [8*cm, 8*cm], nav))
+        story.append(Spacer(1, 0.4*cm))
+
+        # ── Calculated results table ──────────────────────────────
+        story.append(Paragraph("Calculated Results", sec_s))
+        ppm_b = float(results.get("ppm_below") or 0)
+        ppm_a = float(results.get("ppm_above") or 0)
+        prob_b = float(results.get("prob_below") or 0)
+        prob_a = float(results.get("prob_above") or 0)
+        hypo = results.get("hypothesisResult", {})
+        p_val = hypo.get("p_value", np.nan)
+        alpha = hypo.get("alpha", np.nan)
+        t_stat = hypo.get("test_stat", np.nan)
+        df_v   = hypo.get("degrees_of_freedom", np.nan)
+        hypo_conc = "N/A"
+        if np.isfinite(p_val) and np.isfinite(alpha):
+            hypo_conc = "Reject H₀ — significant shift" if p_val < alpha else "Fail to reject H₀"
+
+        calc = [
+            [Paragraph("<b>Metric</b>",lbl_s), Paragraph("<b>Value</b>",lbl_s), Paragraph("<b>Notes</b>",lbl_s)],
+            ["Tolerance (USL−LSL)",  _fmtv(results.get("T_drawing")),          "Spec band width"],
+            ["6σ Spread",            _fmtv(results.get("sixSigmaSpread")),      "99.73% of output"],
+            ["8σ Spread",            _fmtv(results.get("eightSigmaSpread")),    "99.9937% of output"],
+            ["Cp",                   _fmtv(results.get("Cp")),                  "Potential capability"],
+            [f"{results.get('target_index_type','Cpk')}", _fmtv(results.get("CpkCurrent")), f"Target ≥ {_fmtv(results.get('target_index_value'),2)}"],
+            ["Required Shift (Δ)",   _fmtv(results.get("shiftValue")),          "Tₘ − x̄"],
+            ["Required Tolerance",   _fmtv(results.get("newToleranceTotal")),   f"For target {results.get('target_index_type','Cpk')}"],
+            [f"CI {results.get('confidence_level',95)}%", f"[{_fmtv(results.get('ci_lower'))} , {_fmtv(results.get('ci_upper'))}]", "Mean confidence interval"],
+            ["P(x < LSL)",           f"{prob_b*100:.{dp}f}%",                   "Prob below lower spec"],
+            ["P(x > USL)",           f"{prob_a*100:.{dp}f}%",                   "Prob above upper spec"],
+            ["PPM < LSL",            f"{ppm_b:,.1f}",                           "Defects per million"],
+            ["PPM > USL",            f"{ppm_a:,.1f}",                           "Defects per million"],
+            ["t-Statistic",          _fmtv(t_stat, 4),                          "Hypothesis test"],
+            ["p-Value",              f"{p_val:.4e}" if np.isfinite(p_val) else "N/A", f"α = {_fmtv(alpha,2)}"],
+            ["Hypothesis Conclusion",hypo_conc,                                 ""],
+        ]
+        story.append(_tbl(calc, [6*cm, 4.5*cm, 5.5*cm], nav))
+        story.append(Spacer(1, 0.4*cm))
+
+        # ── Assessment ────────────────────────────────────────────
+        story.append(Paragraph("Process Assessment", sec_s))
+        for label, key in [("Centering","centering"),("Capability","capability"),
+                           ("Robustness","robustness"),("Tolerance","tolerance")]:
+            clean = cls._clean_html(summary.get(key,""))
+            story.append(Paragraph(f"<b>{label}:</b> {clean}", body_s))
+        for rec in summary.get("recommendations", []):
+            story.append(Paragraph(f"• {cls._clean_html(rec)}", body_s))
+
+        # ── Nelson Rules ──────────────────────────────────────────
+        nelson = results.get("nelson_rules", {})
+        if nelson:
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph("Nelson Rules", sec_s))
+            rule_names_map = {
+                1:"Rule 1: Point > 3σ from mean", 2:"Rule 2: 9 consecutive same side",
+                3:"Rule 3: 6 consecutive trending", 4:"Rule 4: 14 alternating up/down",
+                5:"Rule 5: 2 of 3 > 2σ (same side)", 6:"Rule 6: 4 of 5 > 1σ (same side)",
+                7:"Rule 7: 15 within ±1σ", 8:"Rule 8: 8 outside ±1σ both sides",
+            }
+            nr_data = [[Paragraph("<b>Rule</b>",lbl_s), Paragraph("<b>Status</b>",lbl_s), Paragraph("<b>Occurrences</b>",lbl_s)]]
+            nr_cmds = [("FONTSIZE",(0,0),(-1,-1),9),("GRID",(0,0),(-1,-1),0.4,_rgb(0.7,0.74,0.78)),
+                       ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+                       ("BACKGROUND",(0,0),(-1,0),nav),("TEXTCOLOR",(0,0),(-1,0),wh),
+                       ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold")]
+            for ri, (rno, idxs) in enumerate(sorted(nelson.items()), 1):
+                fail = bool(idxs)
+                nr_data.append([rule_names_map.get(rno, f"Rule {rno}"),
+                                 "FAIL" if fail else "PASS", str(len(idxs))])
+                bg = _rgb(0.99,0.89,0.89) if fail else _rgb(0.82,0.98,0.89)
+                nr_cmds.append(("BACKGROUND",(1,ri),(1,ri),bg))
+            nr_tbl = Table(nr_data, colWidths=[10*cm, 3*cm, 3*cm])
+            nr_tbl.setStyle(TableStyle(nr_cmds))
+            story.append(nr_tbl)
+
+        # ── Charts ────────────────────────────────────────────────
+        if figs:
+            charts_added = 0
+            for fk, flabel in [("before","Chart 1: Current Process Distribution"),
+                                ("after","Chart 2: Centered Process vs Required Specs"),
+                                ("hist","Chart 3: Data Frequency Distribution")]:
+                png = cls._fig_png(figs.get(fk))
+                if png:
+                    if charts_added == 0:
+                        story.append(PageBreak())
+                        story.append(Paragraph("Process Charts", sec_s))
+                    story.append(RLImage(io.BytesIO(png), width=15.5*cm, height=8.2*cm))
+                    story.append(Paragraph(flabel, cap_s))
+                    story.append(Spacer(1, 0.3*cm))
+                    charts_added += 1
+            if charts_added == 0:
+                story.append(Paragraph("ℹ Charts not embedded — install kaleido to include charts.", cap_s))
+
+        def _footer(canvas, doc_ref):
+            canvas.saveState()
+            canvas.setFont("Helvetica", 7)
+            canvas.setFillColor(mut)
+            canvas.drawString(1.8*cm, 1.1*cm,
+                              f"SPC Report — {char_name} — {datetime.datetime.now().strftime('%Y-%m-%d')}")
+            canvas.drawRightString(A4[0]-1.8*cm, 1.1*cm, f"Page {doc_ref.page}")
+            canvas.restoreState()
+
+        doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+        buf.seek(0)
+        return buf.getvalue()
+
+    @classmethod
+    def export_history_pdf(cls, history_data):
+        """Summary PDF for selected history entries."""
+        try:
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.units import cm
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.enums import TA_CENTER
+        except ImportError:
+            return None
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                                topMargin=1.5*cm, bottomMargin=1.8*cm)
+        styles = getSampleStyleSheet()
+
+        def _rgb(r,g,b): return colors.Color(r,g,b)
+        nav = _rgb(0.06,0.09,0.16); acc = _rgb(0.15,0.51,0.93); mut = _rgb(0.44,0.51,0.58)
+
+        def _ps(name, sz=9, bold=False, color=None, align=TA_CENTER):
+            return ParagraphStyle(name, parent=styles["Normal"], fontSize=sz,
+                                  fontName="Helvetica-Bold" if bold else "Helvetica",
+                                  textColor=color or _rgb(0.12,0.16,0.24),
+                                  alignment=align, leading=sz+4)
+
+        story = []
+        story.append(Spacer(1, 0.4*cm))
+        story.append(Paragraph("Analysis History Report", _ps("T",18,True,nav)))
+        story.append(Paragraph(
+            f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  |  Entries: {len(history_data)}",
+            _ps("S",9,False,mut)))
+        story.append(Spacer(1,0.3*cm))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=acc))
+        story.append(Spacer(1,0.3*cm))
+
+        # Summary metrics
+        cpk_vals = [float(e.get("CpkCurrent",np.nan)) for e in history_data
+                    if e.get("CpkCurrent") is not None and np.isfinite(float(e.get("CpkCurrent",np.nan)))]
+        pass_count = sum(1 for e in history_data if "GOOD" in str(e.get("verdict","")))
+        pass_rate = f"{pass_count/len(history_data)*100:.0f}%" if history_data else "N/A"
+
+        sm_data = [
+            ["Total Runs","Avg Cpk","Best Cpk","Worst Cpk","Pass Rate"],
+            [str(len(history_data)),
+             f"{np.mean(cpk_vals):.3f}" if cpk_vals else "N/A",
+             f"{max(cpk_vals):.3f}" if cpk_vals else "N/A",
+             f"{min(cpk_vals):.3f}" if cpk_vals else "N/A",
+             pass_rate],
+        ]
+        sm_tbl = Table(sm_data, colWidths=[4.5*cm]*5)
+        sm_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),nav),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),10),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("BACKGROUND",(0,1),(-1,1),_rgb(0.93,0.97,1.0)),
+            ("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),
+            ("BOX",(0,0),(-1,-1),1,acc),("GRID",(0,0),(-1,-1),0.5,_rgb(0.7,0.74,0.78)),
+        ]))
+        story.append(sm_tbl)
+        story.append(Spacer(1,0.5*cm))
+
+        # History table
+        story.append(Paragraph("Run History", _ps("Sec",12,True,acc,TA_CENTER)))
+        hdr = ["Timestamp","Characteristic","Verdict","Cp","Cpk","Shift(Δ)","Tₘ","LSL","USL","PPM<LSL","PPM>USL","p-Value"]
+        tdata = [[Paragraph(f"<b>{h}</b>",_ps("H",8,True,colors.white)) for h in hdr]]
+
+        vfills = {"GOOD":_rgb(0.82,0.98,0.89),"MARGINAL":_rgb(1.0,0.97,0.82),"ACTION":_rgb(0.99,0.89,0.89)}
+
+        def _fmtv2(val, d=3):
+            if val is None: return "N/A"
+            try:
+                f = float(val)
+                return f"{f:.{d}f}" if np.isfinite(f) else ("∞" if f>0 else "−∞")
+            except Exception:
+                return str(val)
+
+        tcmds = [
+            ("BACKGROUND",(0,0),(-1,0),nav),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+            ("GRID",(0,0),(-1,-1),0.3,_rgb(0.75,0.78,0.82)),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, _rgb(0.96,0.98,1.0)]),
+        ]
+
+        for ri, entry in enumerate(history_data, 1):
+            ts = ""
+            try:
+                ts = datetime.datetime.fromisoformat(entry.get("id","")).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                ts = str(entry.get("id",""))[:16]
+            verdict = str(entry.get("verdict","N/A"))
+            vkey = "GOOD" if "GOOD" in verdict else ("MARGINAL" if "MARGINAL" in verdict else "ACTION")
+            p_val = entry.get("hypothesisResult",{}).get("p_value", np.nan)
+            tdata.append([
+                ts, entry.get("characteristic_name", entry.get("measurement_name","")),
+                verdict,
+                _fmtv2(entry.get("Cp")), _fmtv2(entry.get("CpkCurrent")),
+                _fmtv2(entry.get("shiftValue"),4),
+                _fmtv2(entry.get("tm")), _fmtv2(entry.get("lsl")), _fmtv2(entry.get("usl")),
+                _fmtv2(entry.get("ppm_below"),1), _fmtv2(entry.get("ppm_above"),1),
+                f"{p_val:.3e}" if np.isfinite(p_val) else "N/A",
+            ])
+            tcmds.append(("BACKGROUND",(2,ri),(2,ri), vfills.get(vkey,_rgb(0.96,0.98,1.0))))
+
+        col_w = [3.2*cm, 3.8*cm, 2.8*cm] + [2.0*cm]*9
+        htbl = Table(tdata, colWidths=col_w, repeatRows=1)
+        htbl.setStyle(TableStyle(tcmds))
+        story.append(htbl)
+
+        def _footer(canvas, doc_ref):
+            canvas.saveState()
+            canvas.setFont("Helvetica", 7)
+            canvas.setFillColor(mut)
+            canvas.drawString(1.5*cm, 1.0*cm,
+                              f"SPC History Report — {datetime.datetime.now().strftime('%Y-%m-%d')}")
+            from reportlab.lib.pagesizes import A4, landscape as _ls
+            pw = _ls(A4)[0]
+            canvas.drawRightString(pw-1.5*cm, 1.0*cm, f"Page {doc_ref.page}")
+            canvas.restoreState()
+
+        doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+        buf.seek(0)
+        return buf.getvalue()
 
 
 # --- Chatbot Logic ---
@@ -3548,8 +4228,13 @@ with tab_analysis:
         def format_num(val, default="N/A", dps=None):
             if dps is None:
                 dps = dp
-            if val is None or not np.isfinite(val):
-                return "∞" if val == np.inf else ("-∞" if val == -np.inf else default)
+            if val is None:
+                return default
+            try:
+                if not np.isfinite(val):
+                    return "∞" if val > 0 else "-∞"
+            except (TypeError, ValueError):
+                return str(val)
             return f"{val:.{dps}f}"
 
         if res and not res.get("error"):
@@ -4149,8 +4834,8 @@ with tab_viz:
     viz_char_names = list(st.session_state.characteristics.keys())
     if len(viz_char_names) > 0:
         st.markdown("<br>", unsafe_allow_html=True)
-        col1, col2 = st.columns([1, 4])
-        with col1:
+        exp_cols = st.columns([1, 1, 3])
+        with exp_cols[0]:
             try:
                 excel_data = generate_full_report_excel(st.session_state.characteristics)
                 st.download_button(
@@ -4159,10 +4844,36 @@ with tab_viz:
                     file_name=f"SPC_Full_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
-                    type="primary"
+                    type="primary",
                 )
             except Exception as e:
-                st.error(f"Kaleido missing for export: {e}. Run pip install kaleido")
+                st.error(f"Excel export failed: {e}")
+        with exp_cols[1]:
+            # Per-characteristic PDF export for the active characteristic
+            _pdf_char = st.session_state.active_characteristic_name
+            _pdf_char_state = st.session_state.characteristics.get(_pdf_char, {})
+            _pdf_res     = _pdf_char_state.get("results", {})
+            _pdf_summary = _pdf_char_state.get("summary", {})
+            _pdf_figs    = _pdf_char_state.get("figs", {})
+            if _pdf_res and not _pdf_res.get("error"):
+                try:
+                    _pdf_bytes = PDFExportManager.export_capability_pdf(
+                        _pdf_res, _pdf_summary, _pdf_figs, _pdf_char
+                    )
+                    if _pdf_bytes:
+                        st.download_button(
+                            label=f"📄 Export PDF ({_pdf_char[:18]})",
+                            data=_pdf_bytes,
+                            file_name=f"SPC_Report_{_pdf_char}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("Install reportlab for PDF export: `pip install reportlab`")
+                except Exception as e:
+                    st.error(f"PDF export failed: {e}")
+            else:
+                st.button("📄 Export PDF (run analysis first)", disabled=True, use_container_width=True)
 
     # Dynamic sub-tabs for each characteristic
     viz_char_names = list(st.session_state.characteristics.keys())
@@ -4194,22 +4905,42 @@ with tab_viz:
                         fig_hist_preview.add_trace(
                             go.Histogram(
                                 x=viz_data,
-                                nbinsx=20,
+                                nbinsx=min(30, max(10, len(viz_data) // 10)),
                                 marker_color="#3B82F6",
-                                opacity=0.75,
+                                marker_line_color="rgba(37,99,235,0.6)",
+                                marker_line_width=0.5,
+                                opacity=0.80,
                                 name="Data",
+                                hovertemplate="Value: %{x}<br>Count: %{y}<extra></extra>",
                             )
                         )
                         fig_hist_preview.update_layout(
-                            title="Distribution Histogram",
-                            height=300,
-                            margin=dict(l=40, r=20, t=50, b=40),
+                            title=dict(text="Distribution Histogram", font=dict(size=11, color=_plot_font)),
+                            height=310,
+                            margin=dict(l=50, r=20, t=46, b=46),
                             showlegend=False,
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color=_plot_font),
-                            xaxis=dict(gridcolor=_plot_grid, linecolor=_plot_line),
-                            yaxis=dict(gridcolor=_plot_grid, linecolor=_plot_line),
+                            font=dict(color=_plot_font, size=10),
+                            xaxis=dict(
+                                gridcolor=_plot_grid, linecolor=_plot_line,
+                                fixedrange=False, automargin=True,
+                                showspikes=True, spikemode="across",
+                                spikesnap="cursor", spikecolor=_plot_line,
+                                spikethickness=1, spikedash="dot",
+                            ),
+                            yaxis=dict(
+                                gridcolor=_plot_grid, linecolor=_plot_line,
+                                fixedrange=False, automargin=True,
+                            ),
+                            bargap=0.04,
+                            hovermode="x",
+                            hoverlabel=dict(
+                                font_size=11, bgcolor=_plot_hover_bg,
+                                font_color=_plot_hover_text, bordercolor=_plot_line,
+                            ),
+                            dragmode="pan",
+                            transition=dict(duration=0),
                         )
                         st.plotly_chart(
                             fig_hist_preview,
@@ -4224,20 +4955,44 @@ with tab_viz:
                             go.Box(
                                 y=viz_data,
                                 marker_color="#10B981",
+                                marker_size=4,
+                                line_color="#059669",
                                 boxpoints="outliers",
+                                jitter=0.3,
+                                pointpos=0,
                                 name="Values",
+                                hovertemplate="Value: %{y:.4f}<extra></extra>",
                             )
                         )
+                        _bq1 = float(np.percentile(viz_data, 25))
+                        _bq3 = float(np.percentile(viz_data, 75))
+                        _bpad = max((_bq3 - _bq1) * 1.5, abs(np.std(viz_data)) * 0.5, 0.01)
                         fig_box.update_layout(
-                            title="Box Plot",
-                            height=300,
-                            margin=dict(l=40, r=20, t=50, b=40),
+                            title=dict(text="Box Plot", font=dict(size=11, color=_plot_font)),
+                            height=310,
+                            margin=dict(l=50, r=20, t=46, b=46),
                             showlegend=False,
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color=_plot_font),
-                            xaxis=dict(gridcolor=_plot_grid, linecolor=_plot_line),
-                            yaxis=dict(gridcolor=_plot_grid, linecolor=_plot_line),
+                            font=dict(color=_plot_font, size=10),
+                            xaxis=dict(
+                                gridcolor=_plot_grid, linecolor=_plot_line,
+                                fixedrange=True,  # X fixed — box plot X is categorical
+                                automargin=True,
+                            ),
+                            yaxis=dict(
+                                gridcolor=_plot_grid, linecolor=_plot_line,
+                                fixedrange=False,  # Y zoom for inspecting distributions
+                                automargin=True,
+                                range=[_bq1 - _bpad * 2, _bq3 + _bpad * 2],
+                            ),
+                            hovermode="closest",
+                            hoverlabel=dict(
+                                font_size=11, bgcolor=_plot_hover_bg,
+                                font_color=_plot_hover_text, bordercolor=_plot_line,
+                            ),
+                            dragmode="pan",
+                            transition=dict(duration=0),
                         )
                         st.plotly_chart(
                             fig_box, use_container_width=True, config=PlotManager.PLOT_CONFIG,
@@ -4461,24 +5216,55 @@ with tab_viz:
                                      showarrow=False, font=dict(size=8, color="rgba(128,128,128,0.5)"), xanchor="right"),
                             ])
 
+                        _ui_ctrl = f"ichart_{viz_char_name}_{n}"
                         _ctrl_layout = dict(
-                            height=420,
-                            margin=dict(t=55, b=65, l=55, r=70),
+                            uirevision=_ui_ctrl,
+                            height=430,
+                            margin=dict(t=55, b=75, l=60, r=90),
                             hovermode="x unified",
-                            xaxis=dict(title=dict(text="Sample Number", font=dict(color=_fc, size=11)),
-                                       tickfont=dict(size=10, color=_fc),
-                                       gridcolor=_plot_grid,
-                                       linecolor=_plot_line),
-                            yaxis=dict(title=dict(text="Value", font=dict(color=_fc, size=11)),
-                                       tickfont=dict(size=10, color=_fc),
-                                       gridcolor=_plot_grid,
-                                       linecolor=_plot_line),
-                            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center",
-                                        bgcolor=_plot_legend_bg, font=dict(size=9, color=_fc), bordercolor=_plot_line, borderwidth=1),
-                            hoverlabel=dict(font_size=11, bgcolor=_plot_hover_bg,
-                                            font_color=_plot_hover_text, bordercolor=_plot_line),
+                            xaxis=dict(
+                                title=dict(text="Sample Number", font=dict(color=_fc, size=11)),
+                                tickfont=dict(size=10, color=_fc),
+                                gridcolor=_plot_grid,
+                                linecolor=_plot_line,
+                                fixedrange=False,
+                                automargin=True,
+                                showspikes=True,
+                                spikemode="across",
+                                spikesnap="cursor",
+                                spikecolor=_plot_line,
+                                spikethickness=1,
+                                spikedash="dot",
+                            ),
+                            yaxis=dict(
+                                title=dict(text="Value", font=dict(color=_fc, size=11)),
+                                tickfont=dict(size=10, color=_fc),
+                                gridcolor=_plot_grid,
+                                linecolor=_plot_line,
+                                fixedrange=False,
+                                automargin=True,
+                            ),
+                            legend=dict(
+                                orientation="h", y=-0.27, x=0.5, xanchor="center",
+                                bgcolor=_plot_legend_bg, font=dict(size=8, color=_fc),
+                                bordercolor=_plot_line, borderwidth=1,
+                                entrywidthmode="fraction", entrywidth=0.22,
+                            ),
+                            hoverlabel=dict(
+                                font_size=11, bgcolor=_plot_hover_bg,
+                                font_color=_plot_hover_text, bordercolor=_plot_line,
+                                namelength=25,
+                            ),
+                            dragmode="pan",
+                            modebar=dict(
+                                orientation="v",
+                                bgcolor="rgba(0,0,0,0)",
+                                color=_fc,
+                                activecolor=_fc,
+                            ),
                             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color=_fc),
+                            font=dict(color=_fc, size=11),
+                            transition=dict(duration=0),
                         )
 
                         fig_control.update_layout(
@@ -4487,7 +5273,8 @@ with tab_viz:
                             **_ctrl_layout,
                         )
 
-                        st.plotly_chart(fig_control, use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                        st.plotly_chart(fig_control, use_container_width=True,
+                                        config=PlotManager.CONTROL_CONFIG,
                                         key=f"viz_ichart_{viz_char_name}")
 
                         # Alert
@@ -4507,7 +5294,8 @@ with tab_viz:
                         _cpk = min((_usl - x_bar) / (3 * s), (x_bar - _lsl) / (3 * s)) if s > 0 and _usl > _lsl else float("inf")
                         _ppm_above = sum(1 for v in data_points if v > _usl)
                         _ppm_below = sum(1 for v in data_points if v < _lsl)
-                        _zone_a = sum(1 for v in data_points if v > uwl or v < lwl)
+                        # Zone A: ±2σ to ±3σ band only (NOT including beyond ±3σ)
+                        _zone_a = sum(1 for v in data_points if (uwl < v <= ucl) or (lwl > v >= lcl))
                         _zone_b = sum(1 for v in data_points if (uwl >= v > plus_1s) or (lwl <= v < minus_1s))
                         _zone_c = sum(1 for v in data_points if minus_1s <= v <= plus_1s)
                         _sigma_level = abs(x_bar - _tm) / s if s > 0 else 0.0
@@ -4625,17 +5413,26 @@ with tab_viz:
                             title=dict(text=f"MR-Chart — {viz_char_name} ({n-1} ranges)", font=dict(size=12, color=_fc)),
                             annotations=mr_annotations,
                             **{**_ctrl_layout,
-                               "xaxis": dict(title=dict(text="Sample Number", font=dict(color=_fc, size=11)),
-                                             tickfont=dict(size=10, color=_fc),
-                                             gridcolor=_plot_grid,
-                                             linecolor=_plot_line),
-                               "yaxis": dict(title=dict(text="Moving Range |Xᵢ − Xᵢ₋₁|", font=dict(color=_fc, size=11)),
-                                             tickfont=dict(size=10, color=_fc),
-                                             gridcolor=_plot_grid,
-                                             linecolor=_plot_line)},
+                               "xaxis": dict(
+                                   title=dict(text="Sample Number", font=dict(color=_fc, size=11)),
+                                   tickfont=dict(size=10, color=_fc),
+                                   gridcolor=_plot_grid, linecolor=_plot_line,
+                                   fixedrange=False, automargin=True,
+                                   showspikes=True, spikemode="across",
+                                   spikesnap="cursor", spikecolor=_plot_line,
+                                   spikethickness=1, spikedash="dot",
+                               ),
+                               "yaxis": dict(
+                                   title=dict(text="Moving Range |Xᵢ − Xᵢ₋₁|", font=dict(color=_fc, size=11)),
+                                   tickfont=dict(size=10, color=_fc),
+                                   gridcolor=_plot_grid, linecolor=_plot_line,
+                                   fixedrange=False, automargin=True,
+                                   rangemode="tozero",  # MR is always ≥0
+                               )},
                         )
 
-                        st.plotly_chart(fig_mr, use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                        st.plotly_chart(fig_mr, use_container_width=True,
+                                        config=PlotManager.CONTROL_CONFIG,
                                         key=f"viz_mrchart_{viz_char_name}")
 
                 elif not figs and len(viz_data) < 2:
@@ -5088,14 +5885,44 @@ with tab_history:
                                 annotation_text="Target (1.67)", annotation_position="top right")
             _fc = _plot_font
             fig_trend.update_layout(
-                height=280, margin=dict(t=30, b=50, l=50, r=30),
-                xaxis=dict(title="Run Date", tickfont=dict(size=10, color=_fc), gridcolor=_plot_grid, linecolor=_plot_line),
-                yaxis=dict(title="Cpk", tickfont=dict(size=10, color=_fc), gridcolor=_plot_grid, linecolor=_plot_line),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color=_fc),
-                hoverlabel=dict(bgcolor=_plot_hover_bg, font_color=_plot_hover_text, bordercolor=_plot_line),
+                uirevision=f"trend_{len(st.session_state.history)}",
+                height=290,
+                margin=dict(t=36, b=60, l=60, r=36),
+                xaxis=dict(
+                    title="Run Date",
+                    tickfont=dict(size=10, color=_fc),
+                    gridcolor=_plot_grid,
+                    linecolor=_plot_line,
+                    fixedrange=False,
+                    automargin=True,
+                    showspikes=True, spikemode="across",
+                    spikesnap="cursor", spikecolor=_plot_line,
+                    spikethickness=1, spikedash="dot",
+                ),
+                yaxis=dict(
+                    title="Cpk",
+                    tickfont=dict(size=10, color=_fc),
+                    gridcolor=_plot_grid,
+                    linecolor=_plot_line,
+                    fixedrange=False,
+                    automargin=True,
+                ),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_fc, size=10),
+                hoverlabel=dict(
+                    bgcolor=_plot_hover_bg,
+                    font_color=_plot_hover_text,
+                    bordercolor=_plot_line,
+                    font_size=11,
+                ),
+                hovermode="x unified",
+                dragmode="pan",
                 showlegend=False,
+                transition=dict(duration=0),
             )
-            st.plotly_chart(fig_trend, use_container_width=True, config=PlotManager.PLOT_CONFIG)
+            st.plotly_chart(fig_trend, use_container_width=True, config=PlotManager.CONTROL_CONFIG,
+                            key="history_cpk_trend")
 
         st.divider()
 
@@ -5130,7 +5957,7 @@ with tab_history:
                 filtered_history["characteristic_name"].fillna(filtered_history["measurement_name"]) == filter_characteristic
             ]
 
-        display_cols = [
+        _all_display_cols = [
             "id", "characteristic_name", "measurement_name", "verdict",
             "Cp", "CpkCurrent", "shiftValue", "tm", "lsl", "usl",
             "x_bar", "s", "n_samples", "ppm_below", "ppm_above",
@@ -5141,11 +5968,22 @@ with tab_history:
             "tm": "Tₘ", "x_bar": "Mean (x̄)", "s": "StdDev (σ)",
             "n_samples": "n", "ppm_below": "PPM < LSL", "ppm_above": "PPM > USL",
         }
+        # Safe column selection — only include cols that exist in the filtered df
+        display_cols = [c for c in _all_display_cols if c in filtered_history.columns]
+        # Ensure all columns exist, fill missing with None
+        for _mc in _all_display_cols:
+            if _mc not in filtered_history.columns:
+                filtered_history = filtered_history.copy()
+                filtered_history[_mc] = None
+        display_cols = _all_display_cols  # Now safe to use all
 
         display_df = filtered_history[display_cols].copy()
         display_df.insert(0, "Select", False)
         display_df["Timestamp"] = display_df["id"].apply(
-            lambda value: datetime.datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M:%S") if value else ""
+            lambda value: (
+                datetime.datetime.fromisoformat(str(value)).strftime("%Y-%m-%d %H:%M:%S")
+                if value and str(value).strip() else ""
+            )
         )
         display_df.rename(columns=rename_map, inplace=True)
 
@@ -5177,39 +6015,59 @@ with tab_history:
 
         selected_ids = selection_df.loc[selection_df["Select"], "id"].tolist()
 
-        # Action buttons
-        btn_cols = st.columns([1, 1, 1, 2])
+        # Action buttons — 4 columns now (Excel | PDF | CSV | Clear)
+        btn_cols = st.columns([1, 1, 1, 1])
         with btn_cols[0]:
             if selected_ids:
                 try:
                     selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
                     history_buffer = exporter.export_selected_history(selected_history_data)
                     st.download_button(
-                        label=f"📥 Export Selected ({len(selected_ids)})",
+                        label=f"📥 Excel ({len(selected_ids)} runs)",
                         data=history_buffer,
-                        file_name=f"Capability_History_Selection_{datetime.date.today()}.xlsx",
+                        file_name=f"Capability_History_{datetime.date.today()}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                     )
                 except Exception as e:
-                    st.error(f"Could not generate history export: {e}")
+                    st.error(f"Excel export failed: {e}")
             else:
-                st.button("📥 Export Selected (0)", use_container_width=True, disabled=True)
+                st.button("📥 Excel (select rows)", use_container_width=True, disabled=True)
 
         with btn_cols[1]:
-            # CSV download of full history
+            if selected_ids:
+                try:
+                    selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
+                    pdf_bytes = PDFExportManager.export_history_pdf(selected_history_data)
+                    if pdf_bytes:
+                        st.download_button(
+                            label=f"📄 PDF ({len(selected_ids)} runs)",
+                            data=pdf_bytes,
+                            file_name=f"SPC_History_{datetime.date.today()}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("`pip install reportlab` for PDF export")
+                except Exception as e:
+                    st.error(f"PDF export failed: {e}")
+            else:
+                st.button("📄 PDF (select rows)", use_container_width=True, disabled=True)
+
+        with btn_cols[2]:
             csv_data = pd.DataFrame(st.session_state.history).to_csv(index=False)
             st.download_button(
-                "📄 Download CSV",
+                "📋 Download CSV",
                 data=csv_data,
                 file_name=f"SPC_History_{datetime.date.today()}.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
-        with btn_cols[2]:
+        with btn_cols[3]:
             if st.button("🗑 Clear History", use_container_width=True):
                 st.session_state.history = []
                 st.rerun()
+
 
 
 # --- Tab 5: Reference ---
@@ -5238,14 +6096,14 @@ with tab_ref:
             st.markdown("""
 | Sigma Level | Yield (%) | DPMO (PPM) | Cpk |
 |-------------|-----------|------------|-----|
-| 1σ | 30.85% | 691,462 | 0.33 |
-| 2σ | 69.15% | 308,538 | 0.67 |
-| 3σ | 93.32% | 66,807 | 1.00 |
-| 4σ | 99.3790% | 6,210 | 1.33 |
-| 5σ | 99.97670% | 233 | 1.67 |
-| 6σ | 99.99966% | 3.4 | 2.00 |
+| 1σ | 68.27% | 317,310 | 0.33 |
+| 2σ | 95.45% | 45,500 | 0.67 |
+| 3σ | 99.73% | 2,700 | 1.00 |
+| 4σ | 99.9937% | 63 | 1.33 |
+| 5σ | 99.99994% | 0.57 | 1.67 |
+| 6σ | 99.9999998% | 0.002 | 2.00 |
 
-> *PPM values include the standard 1.5σ long-term shift assumption.*
+> *Yield and PPM based on two-tailed normal distribution (no long-term shift). For long-term DPMO with 1.5σ shift: 3σ≈66,807 / 4σ≈6,210 / 5σ≈233 / 6σ≈3.4 PPM.*
 """)
 
         # --- Core SPC Formulas ---
