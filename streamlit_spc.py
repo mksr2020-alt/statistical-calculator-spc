@@ -1128,6 +1128,94 @@ class PlotManager:
 
         return fig_before, fig_after, fig_hist
 
+    @classmethod
+    def create_control_charts(cls, data_points, usl, lsl, tm, char_name, show_warnings=True):
+        import plotly.graph_objs as go
+        import numpy as np
+        global _plot_font, _plot_grid, _plot_line, _plot_legend_bg, _plot_hover_bg, _plot_hover_text
+        _fc = _plot_font if _plot_font else "#5c5c5c"
+
+        n = len(data_points)
+        if n < 2:
+            return None, None
+
+        x_bar = float(np.mean(data_points))
+        s = float(np.std(data_points, ddof=1))
+
+        mr_values = [abs(data_points[i] - data_points[i - 1]) for i in range(1, n)]
+        mr_bar = float(np.mean(mr_values)) if mr_values else 0.0
+        mr_ucl = 3.267 * mr_bar
+        control_sigma = mr_bar / 1.128 if mr_bar > 0 else s
+
+        plus_1s, minus_1s = x_bar + control_sigma, x_bar - control_sigma
+        ucl, lcl = x_bar + 3 * control_sigma, x_bar - 3 * control_sigma
+        uwl, lwl = x_bar + 2 * control_sigma, x_bar - 2 * control_sigma
+
+        # ====== I-CHART ======
+        fig_control = go.Figure()
+        fig_control.add_trace(go.Scatter(x=list(range(1, n + 1)), y=data_points, mode="lines+markers",
+                                         name="Individual Value", line=dict(color="#3B82F6", width=2),
+                                         marker=dict(size=5, color="#3B82F6")))
+        fig_control.add_trace(go.Scatter(x=[1, n], y=[x_bar, x_bar], mode="lines", name=f"CL x̄ = {x_bar:.4f}",
+                                         line=dict(color="#10B981", width=2, dash="solid")))
+        fig_control.add_trace(go.Scatter(x=[1, n], y=[ucl, ucl], mode="lines", name=f"UCL x̄+3σ = {ucl:.4f}",
+                                         line=dict(color="#EF4444", width=1.5, dash="dash")))
+        fig_control.add_trace(go.Scatter(x=[1, n], y=[lcl, lcl], mode="lines", name=f"LCL x̄−3σ = {lcl:.4f}",
+                                         line=dict(color="#EF4444", width=1.5, dash="dash")))
+
+        if show_warnings:
+            fig_control.add_trace(go.Scatter(x=[1, n], y=[uwl, uwl], mode="lines", name=f"+2σ = {uwl:.4f}",
+                                             line=dict(color="#F59E0B", width=1, dash="dot")))
+            fig_control.add_trace(go.Scatter(x=[1, n], y=[lwl, lwl], mode="lines", name=f"−2σ = {lwl:.4f}",
+                                             line=dict(color="#F59E0B", width=1, dash="dot")))
+
+        fig_control.add_trace(go.Scatter(x=[1, n], y=[plus_1s, plus_1s], mode="lines", name=f"+1σ = {plus_1s:.4f}",
+                                         line=dict(color="#A78BFA", width=1, dash="dot"), visible="legendonly"))
+        fig_control.add_trace(go.Scatter(x=[1, n], y=[minus_1s, minus_1s], mode="lines", name=f"−1σ = {minus_1s:.4f}",
+                                         line=dict(color="#A78BFA", width=1, dash="dot"), visible="legendonly"))
+
+        if usl > lsl:
+            fig_control.add_trace(go.Scatter(x=[1, n], y=[usl, usl], mode="lines", name=f"USL = {usl:.3f}", line=dict(color="#059669", width=2, dash="dashdot")))
+            fig_control.add_trace(go.Scatter(x=[1, n], y=[lsl, lsl], mode="lines", name=f"LSL = {lsl:.3f}", line=dict(color="#059669", width=2, dash="dashdot")))
+            fig_control.add_trace(go.Scatter(x=[1, n], y=[tm, tm], mode="lines", name=f"Target = {tm:.3f}", line=dict(color="#8B5CF6", width=1.5, dash="longdash")))
+
+        ooc_indices = [i for i, v in enumerate(data_points) if v > ucl or v < lcl]
+        if ooc_indices:
+            fig_control.add_trace(go.Scatter(x=[i + 1 for i in ooc_indices], y=[data_points[i] for i in ooc_indices],
+                                             mode="markers", name="Out of Control", marker=dict(size=12, color="#EF4444", symbol="circle-open", line=dict(width=2))))
+
+        zone_annotations = [
+            dict(x=1.02, y=ucl, xref="paper", yref="y", text="UCL", showarrow=False, font=dict(size=9, color="#EF4444"), xanchor="left"),
+            dict(x=1.02, y=lcl, xref="paper", yref="y", text="LCL", showarrow=False, font=dict(size=9, color="#EF4444"), xanchor="left"),
+            dict(x=1.02, y=x_bar, xref="paper", yref="y", text="CL", showarrow=False, font=dict(size=9, color="#10B981"), xanchor="left"),
+        ]
+        _ctrl_layout = dict(
+            height=430, margin=dict(t=55, b=75, l=60, r=90), hovermode="x unified",
+            xaxis=dict(title=dict(text="Sample Number", font=dict(color=_fc, size=11)), tickfont=dict(size=10, color=_fc), gridcolor=_plot_grid, linecolor=_plot_line, automargin=True),
+            yaxis=dict(title=dict(text="Value", font=dict(color=_fc, size=11)), tickfont=dict(size=10, color=_fc), gridcolor=_plot_grid, linecolor=_plot_line, automargin=True),
+            legend=dict(orientation="h", y=-0.27, x=0.5, xanchor="center", bgcolor=_plot_legend_bg, font=dict(size=8, color=_fc), bordercolor=_plot_line, borderwidth=1),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color=_fc, size=11), transition=dict(duration=0)
+        )
+        fig_control.update_layout(title=dict(text=f"I-Chart — {char_name} ({n} points)", font=dict(size=12, color=_fc)), annotations=zone_annotations, **_ctrl_layout)
+
+        # ====== MR-CHART ======
+        fig_mr = go.Figure()
+        fig_mr.add_trace(go.Scatter(x=list(range(2, n + 1)), y=mr_values, mode="lines+markers", name="Moving Range", line=dict(color="#F97316", width=2), marker=dict(size=5, color="#F97316")))
+        fig_mr.add_trace(go.Scatter(x=[2, n], y=[mr_bar, mr_bar], mode="lines", name=f"MR̄ ({mr_bar:.4f})", line=dict(color="#10B981", width=2, dash="solid")))
+        fig_mr.add_trace(go.Scatter(x=[2, n], y=[mr_ucl, mr_ucl], mode="lines", name=f"MR UCL ({mr_ucl:.4f})", line=dict(color="#EF4444", width=1.5, dash="dash")))
+
+        mr_ooc = [i for i, v in enumerate(mr_values) if v > mr_ucl]
+        if mr_ooc:
+            fig_mr.add_trace(go.Scatter(x=[i + 2 for i in mr_ooc], y=[mr_values[i] for i in mr_ooc], mode="markers", name="MR Out of Control", marker=dict(size=12, color="#EF4444", symbol="circle-open", line=dict(width=2))))
+
+        mr_annotations = [
+            dict(x=1.02, y=mr_ucl, xref="paper", yref="y", text="MR UCL", showarrow=False, font=dict(size=9, color="#EF4444"), xanchor="left"),
+            dict(x=1.02, y=mr_bar, xref="paper", yref="y", text="MR̄", showarrow=False, font=dict(size=9, color="#10B981"), xanchor="left"),
+        ]
+        fig_mr.update_layout(title=dict(text=f"MR-Chart — {char_name} ({n-1} ranges)", font=dict(size=12, color=_fc)), annotations=mr_annotations, **{**_ctrl_layout, "yaxis": dict(title=dict(text="Moving Range", font=dict(color=_fc, size=11)), tickfont=dict(size=10, color=_fc), gridcolor=_plot_grid, linecolor=_plot_line, automargin=True, rangemode="tozero")})
+
+        return fig_control, fig_mr
+
 
 # --- Summary Panel Logic ---
 # Ported from 'updateSummaryPanel'
@@ -2522,9 +2610,9 @@ def generate_full_report_excel(characteristics):
                 row += 1
             row += 1
 
-        # Embedded charts — column E onward
-        chart_anchor_row = 5
-        chart_col_start = 5  # column E
+        # Embedded charts — below the text tables
+        chart_anchor_row = row + 2
+        chart_col_start = 1  # column A
         kaleido_ok = False
         for fig_key, chart_label in [("before", "Current Process"), ("after", "Centered Process"), ("hist", "Data Histogram")]:
             fig = figs.get(fig_key) if figs else None
@@ -2537,7 +2625,7 @@ def generate_full_report_excel(characteristics):
                     img.height = 270
                     anchor = f"{get_column_letter(chart_col_start)}{chart_anchor_row}"
                     ws.add_image(img, anchor)
-                    chart_anchor_row += 19
+                    chart_anchor_row += 20
                 except Exception:
                     pass
 
@@ -2585,13 +2673,23 @@ class PDFExportManager:
             from reportlab.lib.units import cm
             from reportlab.lib import colors
             from reportlab.platypus import (
-                SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+                SimpleDocTemplate, Paragraph as _OriginalParagraph, Spacer, Table, TableStyle,
                 HRFlowable, Image as RLImage, PageBreak,
             )
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib.enums import TA_CENTER, TA_LEFT
         except ImportError:
             return None
+
+        def _s(text):
+            if isinstance(text, str):
+                return text.replace("Δ", "(Delta)").replace("x̄", "Mean (x-bar)").replace("Tₘ", "Tm")\
+                           .replace("μ", "Mean").replace("σ", "StdDev").replace("≥", ">=").replace("≤", "<=")\
+                           .replace("−", "-").replace("∞", "Infinity")
+            return text
+
+        def Paragraph(text, style, **kwargs):
+            return _OriginalParagraph(_s(text), style, **kwargs)
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -2638,7 +2736,8 @@ class PDFExportManager:
                 return str(val)
 
         def _tbl(data, col_widths, hdr_fill=None):
-            t = Table(data, colWidths=col_widths)
+            sanitized_data = [[_s(cell) if isinstance(cell, str) else cell for cell in row] for row in data]
+            t = Table(sanitized_data, colWidths=col_widths)
             cmds = [
                 ("FONTSIZE",    (0,0), (-1,-1), 9),
                 ("TOPPADDING",  (0,0), (-1,-1), 5),
@@ -2796,7 +2895,9 @@ class PDFExportManager:
             charts_added = 0
             for fk, flabel in [("before","Chart 1: Current Process Distribution"),
                                 ("after","Chart 2: Centered Process vs Required Specs"),
-                                ("hist","Chart 3: Data Frequency Distribution")]:
+                                ("hist","Chart 3: Data Frequency Distribution"),
+                                ("i_chart", "Chart 4: I-Chart (Individuals)"),
+                                ("mr_chart", "Chart 5: MR-Chart (Moving Range)")]:
                 png = cls._fig_png(figs.get(fk))
                 if png:
                     if charts_added == 0:
@@ -2890,7 +2991,7 @@ class PDFExportManager:
 
         # History table
         story.append(Paragraph("Run History", _ps("Sec",12,True,acc,TA_CENTER)))
-        hdr = ["Timestamp","Characteristic","Verdict","Cp","Cpk","Shift(Δ)","Tₘ","LSL","USL","PPM<LSL","PPM>USL","p-Value"]
+        hdr = ["Timestamp","Characteristic","Verdict","Cp","Cpk","Shift(Delta)","Tm","LSL","USL","PPM<LSL","PPM>USL","p-Value"]
         tdata = [[Paragraph(f"<b>{h}</b>",_ps("H",8,True,colors.white)) for h in hdr]]
 
         vfills = {"GOOD":_rgb(0.82,0.98,0.89),"MARGINAL":_rgb(1.0,0.97,0.82),"ACTION":_rgb(0.99,0.89,0.89)}
@@ -3468,6 +3569,17 @@ def run_characteristic_analysis(characteristic_name):
         results["verdict"] = summary.get("verdict", "N/A")
         fig_before, fig_after, fig_hist = plotter.update_plots(results)
         figs = {"before": fig_before, "after": fig_after, "hist": fig_hist}
+        
+        control_chart_data = results.get("importedData", [])
+        if len(control_chart_data) >= 5:
+            fig_i, fig_mr = PlotManager.create_control_charts(
+                control_chart_data,
+                results.get("usl"), results.get("lsl"), results.get("tm"),
+                char_name=characteristic_name, show_warnings=True
+            )
+            figs["i_chart"] = fig_i
+            figs["mr_chart"] = fig_mr
+
     state["results"] = results
     state["summary"] = summary
     state["figs"] = figs
