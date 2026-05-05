@@ -1,0 +1,40 @@
+(spc_env) PS C:\Users\kst5kor\Desktop\statistical-calculator-spc-main(2)\statistical-calculator-spc-main> python -m streamlit run streamlit_spc.py --server.address=0.0.0. --server.port=8501
+Traceback (most recent call last):
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\__main__.py", line 20, in <module>
+    main(prog_name="streamlit")
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\click\core.py", line 1514, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\click\core.py", line 1435, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\click\core.py", line 1902, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\click\core.py", line 1298, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\click\core.py", line 853, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\cli.py", line 251, in main_run
+    _main_run(path_str, args, flag_options=kwargs)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\cli.py", line 325, in _main_run
+    bootstrap.run(main_script_path, is_hello, args, flag_options)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\bootstrap.py", line 429, in run
+    asyncio.run(main())
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\asyncio\runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\asyncio\base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\bootstrap.py", line 405, in main
+    await run_server()
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\bootstrap.py", line 387, in run_server        
+    await server.start()
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\server\server.py", line 94, in start
+    await self._starlette_server.start()
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\server\starlette\starlette_server.py", line 283, in start
+    self._socket = _bind_socket(
+  File "C:\Users\kst5kor\.conda\envs\spc_env\lib\site-packages\streamlit\web\server\starlette\starlette_server.py", line 196, in _bind_socket
+    sock.bind((address, port))
+socket.gaierror: [Errno 11001] getaddrinfo failed
+(spc_env) PS C:\Users\kst5kor\Desktop\statistical-calculator-spc-main(2)\statistical-calculator-spc-main> 
