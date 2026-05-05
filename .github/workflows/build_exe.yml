@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write   # needed to create GitHub Releases
 
+env:
+  PYTHONUTF8: "1"    # Force UTF-8 on Windows runner (avoids CP1252 errors)
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   build-windows-exe:
     name: Build on Windows

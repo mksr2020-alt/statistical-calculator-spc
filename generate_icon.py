@@ -1,5 +1,5 @@
 """
-generate_icon.py  —  Converts assets/icon.png  →  assets/icon.ico
+generate_icon.py  --  Converts assets/icon.png  ->  assets/icon.ico
 Run this once before building the .exe.
 
 Usage:
@@ -12,11 +12,16 @@ Requirements:
 import sys
 import os
 
+# Force UTF-8 output on Windows (avoids CP1252 UnicodeEncodeError in CI)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 def convert():
     try:
         from PIL import Image
     except ImportError:
-        print("[generate_icon] Pillow not found — installing...")
+        print("[generate_icon] Pillow not found -- installing...")
         import subprocess
         subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow", "--quiet"])
         from PIL import Image
@@ -38,7 +43,8 @@ def convert():
         icons.append(resized)
 
     icons[0].save(dst, format="ICO", sizes=sizes, append_images=icons[1:])
-    print(f"[generate_icon] ✓  Saved {dst}  ({os.path.getsize(dst) // 1024} KB, {len(sizes)} sizes)")
+    size_kb = os.path.getsize(dst) // 1024
+    print(f"[generate_icon] OK - Saved {dst}  ({size_kb} KB, {len(sizes)} sizes)")
 
 
 if __name__ == "__main__":
