@@ -1387,6 +1387,7 @@ def get_summary_panel_content(results):
 # Ported from 'exportManager'
 class ExportManager:
     def __init__(self):
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
         self.styles = {
             "title": {
                 "font": Font(bold=True, sz=16, color="1F2937"),
@@ -3177,7 +3178,6 @@ class Chatbot:
 # Initialize calculators and managers
 calc = StatisticalCalculator()
 plotter = PlotManager()
-exporter = ExportManager()
 bot = Chatbot()
 
 
@@ -6143,6 +6143,7 @@ with tab_history:
             if selected_ids:
                 try:
                     selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
+                    exporter = ExportManager()
                     history_buffer = exporter.export_selected_history(selected_history_data)
                     st.download_button(
                         label=f"📥 Excel ({len(selected_ids)} runs)",
