@@ -586,6 +586,9 @@ class PlotManager:
         if cannot_plot:
             return None, None, None  # Return empty figures
 
+        global _plot_font
+        _fc = _plot_font if _plot_font else "#5c5c5c"
+
         newToleranceTotal = results.get("newToleranceTotal", np.nan)
         newLSL = (
             Tm - (newToleranceTotal / 2) if np.isfinite(newToleranceTotal) else np.nan
