@@ -38,10 +38,23 @@ Both should show version numbers. If not, install Python first.
   C:\Tools\spc-tool\
   ```
 
-### Step 3 — Install dependencies (once only)
-Open Command Prompt in the extracted folder:
+### Step 3 — Create a Virtual Environment (Recommended)
+This keeps your project files clean and isolated.
+1. Open the extracted folder in **VS Code**.
+2. Go to **Terminal → New Terminal**.
+3. Run this command to create the environment:
+   ```cmd
+   python -m venv .venv
+   ```
+4. Activate the environment:
+   ```cmd
+   .venv\Scripts\activate
+   ```
+   *(Your terminal prompt should now show `(.venv)` at the start).*
+
+### Step 4 — Install dependencies (once only)
+In your VS Code Terminal (with the `.venv` activated), run:
 ```cmd
-cd "C:\Tools\spc-tool"
 pip install -r requirements.txt
 ```
 Takes 3–5 minutes. Only needed once.
@@ -51,15 +64,16 @@ Takes 3–5 minutes. Only needed once.
 > pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 > ```
 
-### Step 4 — Prevent PC from sleeping
+### Step 5 — Prevent PC from sleeping
 ```
 Settings → System → Power & Sleep
   → Sleep (plugged in) → Never
   → When I close the lid (plugged in) → Do nothing
 ```
 
-### Step 5 — Start the server
-Double-click **`start_server.bat`**
+### Step 6 — Start the server
+Double-click **`start_server.bat`** from your File Explorer.
+*(The script is smart and will automatically use your `.venv`!)*
 
 A window appears showing your network URL:
 ```
