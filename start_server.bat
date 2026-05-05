@@ -93,8 +93,8 @@ echo  ╔═══════════════════════�
 echo  ║         SPC Statistical Process Calculator               ║
 echo  ╠══════════════════════════════════════════════════════════╣
 echo  ║                                                          ║
-echo  ║  Your URL:  http://%MY_IP%:8501
-echo  ║  Local:     http://localhost:8501                        ║
+echo  ║  Your URL:  http://%MY_IP%:8080
+echo  ║  Local:     http://localhost:8080                        ║
 echo  ║                                                          ║
 echo  ║  Share "Your URL" with colleagues on the same network.  ║
 echo  ║  They open it in Chrome or Edge — nothing to install.   ║
@@ -106,7 +106,7 @@ echo.
 REM ── Start Streamlit ───────────────────────────────────────────────
 %PYTHON% -m streamlit run streamlit_spc.py ^
     --server.address=0.0.0.0 ^
-    --server.port=8501 ^
+    --server.port=8080 ^
     --server.headless=true ^
     --browser.gatherUsageStats=false ^
     --server.enableCORS=false ^
