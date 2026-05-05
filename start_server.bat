@@ -16,10 +16,23 @@ if exist ".venv\Scripts\python.exe" (
     set PYTHON=.venv\Scripts\python.exe
     set PIP=.venv\Scripts\pip.exe
 ) else (
-    echo  No virtual environment found. Using system Python...
+    echo  No virtual environment found. Checking system Python...
     echo  Tip: Run "python -m venv .venv" to create one.
-    set PYTHON=python
-    set PIP=pip
+    
+    python --version >nul 2>&1
+    if not errorlevel 1 (
+        set PYTHON=python
+        set PIP=pip
+    ) else (
+        py --version >nul 2>&1
+        if not errorlevel 1 (
+            set PYTHON=py
+            set PIP=py -m pip
+        ) else (
+            set PYTHON=python
+            set PIP=pip
+        )
+    )
 )
 
 REM ── Check Python is available ─────────────────────────────────────
