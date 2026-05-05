@@ -18,7 +18,6 @@ if exist ".venv\Scripts\python.exe" (
 ) else (
     echo  No virtual environment found. Checking system Python...
     echo  Tip: Run "python -m venv .venv" to create one.
-    
     python --version >nul 2>&1
     if not errorlevel 1 (
         set PYTHON=python
@@ -29,8 +28,24 @@ if exist ".venv\Scripts\python.exe" (
             set PYTHON=py
             set PIP=py -m pip
         ) else (
+            REM -- Aggressive hunt for common installation paths --
             set PYTHON=python
             set PIP=pip
+            for %%P in (
+                "%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe"
+                "%USERPROFILE%\AppData\Local\Programs\Python\Python311\python.exe"
+                "C:\Python312\python.exe"
+                "C:\Program Files\Python312\python.exe"
+                "C:\Program Files\Python311\python.exe"
+            ) do (
+                if exist %%P (
+                    set PYTHON=%%P
+                    set PIP=%%P -m pip
+                    goto :found_python
+                )
+            )
+            :found_python
+            echo. >nul
         )
     )
 )
