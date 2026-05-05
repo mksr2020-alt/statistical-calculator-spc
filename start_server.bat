@@ -2,6 +2,7 @@
 REM ══════════════════════════════════════════════════════════════════
 REM  SPC Statistical Process Calculator — Server Start Script
 REM  Double-click this file to start. Keep the window open.
+REM  Requires Python 3.12 to be installed.
 REM ══════════════════════════════════════════════════════════════════
 
 title SPC Calculator — Server

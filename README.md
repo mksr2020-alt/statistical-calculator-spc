@@ -20,7 +20,7 @@ Runs entirely in a browser — no installation needed for end users.
 
 ## 🖥️ Setup — Server PC (One Time Only)
 
-> **Requirement:** Python 3.9 or later must be installed.
+> **Requirement:** Python 3.12 must be installed.
 > Download from: https://www.python.org/downloads/windows/
 
 ### Step 1 — Verify Python is installed
