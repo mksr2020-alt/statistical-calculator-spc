@@ -6,3 +6,6 @@ plotly>=5.18.0
 openpyxl>=3.1.0
 reportlab>=4.0.0
 kaleido>=0.2.1
+pywebview>=4.4.0
+pyinstaller>=6.0.0
+Pillow>=10.0.0
