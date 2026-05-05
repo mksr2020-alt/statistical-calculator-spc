@@ -2617,13 +2617,13 @@ def generate_full_report_excel(characteristics):
         chart_anchor_row = row + 2
         chart_col_start = 1  # column A
         kaleido_ok = False
-        for fig_key, chart_label in [("before", "Current Process"), ("after", "Centered Process"), ("hist", "Data Histogram")]:
+        for fig_key, chart_label in [("before", "Current Process"), ("after", "Centered Process"), ("hist", "Data Histogram"), ("i_chart", "I-Chart"), ("mr_chart", "MR-Chart")]:
             fig = figs.get(fig_key) if figs else None
             png = _try_fig_to_png(fig)
             if png:
                 kaleido_ok = True
                 try:
-                    img = XLImage(io.BytesIO(png))
+                    img = OpenpyxlImage(io.BytesIO(png))
                     img.width = 480
                     img.height = 270
                     anchor = f"{get_column_letter(chart_col_start)}{chart_anchor_row}"
