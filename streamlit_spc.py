@@ -1,16 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import scipy.stats as stats
 import math
-import plotly.graph_objects as go
 import io
 import datetime
 import re
-from functools import lru_cache
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-from openpyxl.utils import get_column_letter
 
 
 NELSON_RULE_NAMES = {
@@ -184,6 +178,7 @@ class StatisticalCalculator:
             z_lsl = (LSL - x_bar) / s
             z_target = (Tm - x_bar) / s
 
+            import scipy.stats as stats
             prob_above = 1 - stats.norm.cdf(z_usl)
             prob_below = stats.norm.cdf(z_lsl)
             prob_below_target = stats.norm.cdf(z_target)
@@ -288,10 +283,11 @@ class StatisticalCalculator:
                 (mu_log - LSL_log) / (3 * sigma_log),
             )
 
-            z_usl_log = (USL_log - mu_log) / sigma_log
-            z_lsl_log = (LSL_log - mu_log) / sigma_log
-            z_target_log = (Tm_log - mu_log) / sigma_log
+            z_usl_log = (np.log(USL) - mu_log) / sigma_log
+            z_lsl_log = (np.log(LSL) - mu_log) / sigma_log
+            z_target_log = (np.log(Tm) - mu_log) / sigma_log
 
+            import scipy.stats as stats
             prob_above = 1 - stats.norm.cdf(z_usl_log)
             prob_below = stats.norm.cdf(z_lsl_log)
             prob_below_target = stats.norm.cdf(z_target_log)
@@ -455,12 +451,14 @@ class StatisticalCalculator:
             p_value = np.nan
             if not np.isfinite(test_stat):
                 p_value = 0.0
-            elif results["hypothesis_type"] == "Two-Sided":
-                p_value = 2 * (1 - stats.t.cdf(abs(test_stat), df=degrees_of_freedom))
-            elif results["hypothesis_type"] == "Upper-Sided":  # mu > Tm
-                p_value = 1 - stats.t.cdf(test_stat, df=degrees_of_freedom)
-            else:  # Lower-Sided, mu < Tm
-                p_value = stats.t.cdf(test_stat, df=degrees_of_freedom)
+            else:
+                import scipy.stats as stats
+                if results["hypothesis_type"] == "Two-Sided":
+                    p_value = 2 * (1 - stats.t.cdf(abs(test_stat), df=degrees_of_freedom))
+                elif results["hypothesis_type"] == "Upper-Sided":  # mu > Tm
+                    p_value = 1 - stats.t.cdf(test_stat, df=degrees_of_freedom)
+                else:  # Lower-Sided, mu < Tm
+                    p_value = stats.t.cdf(test_stat, df=degrees_of_freedom)
 
             criticalValue_ppf = (
                 abs(stats.t.ppf(alpha / 2, df=degrees_of_freedom))
@@ -550,6 +548,7 @@ class PlotManager:
         """Generate smooth PDF curve data. 300 points for crisp zoom at any scale."""
         x = np.linspace(x_min, x_max, points)
         y = np.zeros_like(x)
+        import scipy.stats as stats
         if dist_type == "Normal" and params.get("stdDev", 0) > 0:
             y = stats.norm.pdf(x, loc=params["mean"], scale=params["stdDev"])
         elif dist_type == "Lognormal" and params.get("sigma_log", 0) > 0:
@@ -557,6 +556,7 @@ class PlotManager:
         return x, np.nan_to_num(y)
 
     def update_plots(self, results):
+        import plotly.graph_objects as go
         LSL, USL, x_bar, s, Tm, _target_index_value, dp = (
             results.get("lsl"),
             results.get("usl"),
@@ -2360,11 +2360,13 @@ def _xl_cell(ws, row, col, value, font=None, fill=None, align=None, number_forma
 
 
 def generate_full_report_excel(characteristics):
-    from openpyxl.drawing.image import Image as OpenpyxlImage
-    from openpyxl.styles import Font, Alignment
-    
-    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     from openpyxl.utils import get_column_letter
+    from openpyxl.drawing.image import Image as OpenpyxlImage
+    import io
+    import datetime
+    import numpy as np
 
     # ── Shared style objects ──────────────────────────────────────────
     F = Font
@@ -3536,6 +3538,11 @@ def save_characteristic_metadata(metadata_df):
             st.session_state.active_characteristic_name = next(iter(updated))
         set_active_characteristic(st.session_state.active_characteristic_name)
 
+@st.cache_data(show_spinner=False)
+def _extract_numeric_data(df: pd.DataFrame) -> list:
+    if not isinstance(df, pd.DataFrame) or "Value" not in df.columns:
+        return []
+    return pd.to_numeric(df["Value"], errors="coerce").dropna().tolist()
 
 def run_characteristic_analysis(characteristic_name):
     state = st.session_state.characteristics[characteristic_name]
@@ -3545,10 +3552,7 @@ def run_characteristic_analysis(characteristic_name):
     worksheet_values = []
     if state.get("mode") == "Use Data Worksheet":
         worksheet = state.get("worksheet_data")
-        if isinstance(worksheet, pd.DataFrame) and "Value" in worksheet.columns:
-            # Use pandas vectorized conversion — much faster than per-element checks
-            numeric_series = pd.to_numeric(worksheet["Value"], errors="coerce").dropna()
-            worksheet_values = numeric_series.tolist()
+        worksheet_values = _extract_numeric_data(worksheet)
         # Pass pre-parsed data directly — skip expensive string join+reparse
         analysis_inputs["_pre_parsed_data"] = worksheet_values
         analysis_inputs["raw_data"] = ""  # Placeholder, not used when _pre_parsed_data exists
@@ -3608,7 +3612,6 @@ def analyze_all_characteristics():
     st.session_state.batch_results_df = pd.DataFrame(summaries)
 
 
-@lru_cache(maxsize=64)
 def calculate_descriptive_stats(values):
     data_array = np.asarray(values, dtype=float)
     if data_array.size < 2:
@@ -4658,6 +4661,9 @@ with tab_data:
 
             def _make_template():
                 """Generate a pre-formatted .xlsx template with columns matching current characteristics."""
+                from openpyxl import Workbook
+                from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+                from openpyxl.utils import get_column_letter
                 wb = Workbook()
                 ws = wb.active
                 ws.title = "SPC Data"
@@ -5012,6 +5018,7 @@ with tab_viz:
                     )
 
                 if len(viz_data) >= 2:
+                    import plotly.graph_objects as go
                     st.subheader(f"Worksheet Distribution — {viz_char_name}")
                     preview_cols = st.columns(2)
 
