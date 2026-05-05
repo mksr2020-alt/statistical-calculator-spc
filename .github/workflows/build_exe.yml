@@ -1,0 +1,86 @@
+name: Build Windows EXE
+
+on:
+  # Runs automatically every time you push code to main
+  push:
+    branches: [ main ]
+  # Also lets you trigger it manually from the GitHub website
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create GitHub Releases
+
+jobs:
+  build-windows-exe:
+    name: Build on Windows
+    runs-on: windows-latest   # GitHub provides a free Windows cloud machine
+
+    steps:
+      # ── 1. Download your code ─────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Install Python 3.11 ────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Upgrade pip ────────────────────────────────────────────────────
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      # ── 4. Install all app and build dependencies ─────────────────────────
+      - name: Install dependencies
+        run: |
+          pip install streamlit>=1.30.0
+          pip install pandas>=2.0.0 numpy>=1.24 scipy>=1.10
+          pip install plotly>=5.18.0 kaleido>=0.2.1
+          pip install openpyxl>=3.1.0 reportlab>=4.0.0
+          pip install pywebview>=4.4.0
+          pip install pyinstaller>=6.0.0
+          pip install Pillow>=10.0.0
+
+      # ── 5. Convert PNG icon → multi-resolution Windows .ico ──────────────
+      - name: Generate Windows icon
+        run: python generate_icon.py
+
+      # ── 6. Build the .exe with PyInstaller ───────────────────────────────
+      - name: Build EXE
+        run: pyinstaller SPC.spec --clean --noconfirm
+
+      # ── 7. Zip the output folder (the whole "SPC Calculator" directory) ───
+      - name: Zip the application folder
+        run: |
+          Compress-Archive -Path "dist\SPC Calculator" -DestinationPath "SPC-Calculator-Windows.zip"
+        shell: pwsh
+
+      # ── 8. Get today's date for the release tag ───────────────────────────
+      - name: Get current date
+        id: date
+        run: echo "DATE=$(Get-Date -Format 'yyyy-MM-dd')" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      # ── 9. Publish as a GitHub Release — downloadable from the Releases page
+      - name: Create GitHub Release and upload ZIP
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.date.outputs.DATE }}-build.${{ github.run_number }}
+          name: "SPC Calculator — Windows Build (${{ steps.date.outputs.DATE }})"
+          body: |
+            ## SPC Statistical Process Calculator
+
+            ### How to use
+            1. Click **SPC-Calculator-Windows.zip** below to download (~300 MB)
+            2. Right-click the ZIP → **Extract All**
+            3. Open the extracted `SPC Calculator` folder
+            4. Double-click **SPC Calculator.exe**
+
+            > No Python, no admin rights, no installation needed.
+            > Built automatically from commit `${{ github.sha }}`
+          files: SPC-Calculator-Windows.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
