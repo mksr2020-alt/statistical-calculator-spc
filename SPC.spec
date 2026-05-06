@@ -141,8 +141,6 @@ a = Analysis(
     # Explicitly exclude heavy unused packages to keep bundle lean
     excludes=[
         "matplotlib",
-        "tkinter",
-        "_tkinter",
         "PyQt5",
         "PyQt6",
         "PySide2",
