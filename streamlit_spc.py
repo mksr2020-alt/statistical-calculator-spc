@@ -4266,7 +4266,7 @@ def sync_ai_selector_to_active_characteristic():
 
 
 # --- Main App UI — Header with compact Refresh ---
-_hdr_col, _refresh_col = st.columns([5, 0.4], gap="small")
+_hdr_col, _refresh_col = st.columns([12, 1], gap="small")
 with _hdr_col:
     st.markdown(
         '<div class="app-shell">'
@@ -4276,13 +4276,13 @@ with _hdr_col:
         unsafe_allow_html=True,
     )
 with _refresh_col:
-    st.markdown('<p style="margin:14px 0 2px;"></p>', unsafe_allow_html=True)
-    if st.button("🔄", help="Refresh / Reload the app", use_container_width=True):
+    st.markdown('<p style="margin:18px 0 0px;"></p>', unsafe_allow_html=True)
+    if st.button("🔄 Refresh", help="Reload the app", use_container_width=True):
         st.rerun()
 
 # Define Tabs
 tab_analysis, tab_data, tab_viz, tab_ai, tab_history, tab_ref, tab_settings = st.tabs(
-    ["Analysis & Report", "Data Worksheet", "Visualization", "AI Predictive Health", "History", "Reference", "⚙️ Settings"]
+    ["Analysis & Report", "Data Worksheet", "Visualization", "AI Predictive Health", "History", "Reference", "Settings"]
 )
 
 # --- Tab 1: Analysis & Report ---
@@ -5829,6 +5829,12 @@ with tab_viz:
                         st.plotly_chart(fig_mr, use_container_width=True,
                                         config=PlotManager.CONTROL_CONFIG,
                                         key=f"viz_mrchart_{viz_char_name}")
+                        
+                        # Deep Upgrade: Save generated charts into state so Excel & PDF exports can include them!
+                        if "figs" not in st.session_state.characteristics[viz_char_name]:
+                            st.session_state.characteristics[viz_char_name]["figs"] = {}
+                        st.session_state.characteristics[viz_char_name]["figs"]["i_chart"] = fig_control
+                        st.session_state.characteristics[viz_char_name]["figs"]["mr_chart"] = fig_mr
 
                 elif not figs and len(viz_data) < 2:
                     st.info(
@@ -6678,10 +6684,48 @@ This tool performs a **one-sample t-test** to determine if μ differs from Tₘ:
 
 # --- Tab 7: Settings ---
 with tab_settings:
-    st.header("⚙️ Application Settings")
-    st.markdown("Configure application preferences and get support here.")
+    st.header("Application Settings & Support")
+    st.markdown("Configure application preferences and view version details.")
     st.divider()
     
+    st.subheader("📁 Export & Storage")
+    
+    # Allow user to specify a default save directory
+    _current_export_dir = st.session_state.get("settings", {}).get("default_export_dir", "")
+    
+    col_dir1, col_dir2 = st.columns([4, 1])
+    with col_dir1:
+        st.text_input("Default Download Location (PDF, Excel, CSV)", value=_current_export_dir, disabled=True, help="If empty, you will be prompted each time.")
+    with col_dir2:
+        st.markdown("<p style='margin:28px 0 0;'></p>", unsafe_allow_html=True)
+        if st.button("📂 Choose Folder", use_container_width=True):
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                folder = filedialog.askdirectory(parent=root, title="Select Default Export Folder")
+                root.destroy()
+                if folder:
+                    new_settings = _load_settings()
+                    new_settings["default_export_dir"] = folder
+                    _save_settings(new_settings)
+                    st.session_state["settings"] = new_settings
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Cannot open folder dialog: {e}")
+                
+    if _current_export_dir:
+        if st.button("❌ Clear Default Folder"):
+            new_settings = _load_settings()
+            new_settings.pop("default_export_dir", None)
+            _save_settings(new_settings)
+            st.session_state["settings"] = new_settings
+            st.rerun()
+
+    st.divider()
+
     # --- Feedback & Support Section ---
     st.subheader("📧 Report a Problem / Feedback")
     fb_col1, fb_col2 = st.columns([2, 1])
