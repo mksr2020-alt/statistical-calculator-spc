@@ -6707,9 +6707,25 @@ with tab_settings:
     # Allow user to specify a default save directory
     _current_export_dir = st.session_state.get("settings", {}).get("default_export_dir", "")
     
+    def _update_export_dir():
+        new_val = st.session_state.export_dir_input
+        new_settings = _load_settings()
+        if new_val:
+            new_settings["default_export_dir"] = new_val
+        else:
+            new_settings.pop("default_export_dir", None)
+        _save_settings(new_settings)
+        st.session_state["settings"] = new_settings
+
     col_dir1, col_dir2 = st.columns([4, 1])
     with col_dir1:
-        st.text_input("Default Download Location (PDF, Excel, CSV)", value=_current_export_dir, disabled=True, help="If empty, you will be prompted each time.")
+        st.text_input(
+            "Default Download Location (PDF, Excel, CSV)", 
+            value=_current_export_dir, 
+            key="export_dir_input",
+            on_change=_update_export_dir,
+            help="Type or paste a folder path. If empty, you will be prompted each time."
+        )
     with col_dir2:
         st.markdown("<p style='margin:28px 0 0;'></p>", unsafe_allow_html=True)
         if st.button("📂 Choose Folder", use_container_width=True):
@@ -6727,6 +6743,8 @@ with tab_settings:
                     _save_settings(new_settings)
                     st.session_state["settings"] = new_settings
                     st.rerun()
+            except ImportError:
+                st.warning("Folder dialog requires 'tkinter' which is missing on your OS. Please type or paste the path directly into the text box instead.")
             except Exception as e:
                 st.error(f"Cannot open folder dialog: {e}")
                 
@@ -6790,7 +6808,7 @@ with tab_settings:
                         background:rgba(59,130,246,0.07);">
               <p style="font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
                         font-weight:700;margin-bottom:8px;opacity:0.7;">Contact</p>
-              <p style="font-size:22px;font-weight:800;margin-bottom:4px;letter-spacing:1px;">KST5KOR</p>
+              <p style="font-size:16px;font-weight:800;margin-bottom:4px;letter-spacing:1px;">KST5KOR</p>
               <p style="font-size:11px;opacity:0.65;margin-bottom:12px;">
                 Tool Owner &amp; Developer
               </p>
