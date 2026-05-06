@@ -8,6 +8,8 @@ import re
 import json
 import os
 import pathlib
+import subprocess
+import plotly.graph_objects as go
 
 # ── Persistent storage helpers ─────────────────────────────────────────────────
 _SPC_DATA_DIR = pathlib.Path.home() / ".spc_calculator"
@@ -59,6 +61,43 @@ def _save_settings(settings_dict):
             json.dump(settings_dict, f, ensure_ascii=False)
     except Exception:
         pass
+
+
+def _save_file_to_desktop(data: bytes, filename: str) -> str:
+    """Save exported file to ~/Desktop/SPC_Exports/ and return the full path."""
+    export_dir = pathlib.Path.home() / "Desktop" / "SPC_Exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    out_path = export_dir / filename
+    with open(out_path, "wb") as f:
+        f.write(data)
+    return str(out_path)
+
+
+def _open_exports_folder():
+    """Open the SPC_Exports folder in Windows Explorer."""
+    export_dir = pathlib.Path.home() / "Desktop" / "SPC_Exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.Popen(["explorer", str(export_dir)])
+    except Exception:
+        try:
+            os.startfile(str(export_dir))
+        except Exception:
+            pass
+
+
+def _write_streamlit_config(theme_name: str):
+    """Write .streamlit/config.toml so Streamlit uses the correct base theme on next start."""
+    base = "light" if theme_name == "Light" else "dark"
+    config_dir = _SPC_DATA_DIR / ".streamlit"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "config.toml"
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(f'[theme]\nbase = "{base}"\n')
+    except Exception:
+        pass
+
 
 
 NELSON_RULE_NAMES = {
@@ -4181,13 +4220,14 @@ def sync_ai_selector_to_active_characteristic():
 def set_ui_theme(theme_name):
     st.session_state.ui_theme = theme_name
     _save_settings({"ui_theme": theme_name})
+    _write_streamlit_config(theme_name)   # write config.toml for next startup
     try:
         st.query_params["theme"] = theme_name.lower()
     except Exception:
         pass
 
-# --- Main App UI — Header with compact theme toggle ---
-_hdr_col, _theme_col = st.columns([4, 1], gap="small")
+# --- Main App UI — Header with compact theme toggle + Refresh ---
+_hdr_col, _theme_col, _refresh_col = st.columns([4, 1, 0.4], gap="small")
 with _hdr_col:
     st.markdown(
         '<div class="app-shell">'
@@ -4210,6 +4250,11 @@ with _theme_col:
     )
     if _theme_map[_sel_label] != _cur_theme:
         set_ui_theme(_theme_map[_sel_label])
+        st.info("♻️ Theme saved. Restart app for full effect.", icon="🎨")
+        st.rerun()
+with _refresh_col:
+    st.markdown('<p style="margin:14px 0 2px;"></p>', unsafe_allow_html=True)
+    if st.button("🔄", help="Refresh / Reload the app", use_container_width=True):
         st.rerun()
 
 
@@ -4963,14 +5008,17 @@ with tab_data:
                 buf.seek(0)
                 return buf.getvalue()
 
-            st.download_button(
-                "📥 Download Template",
-                data=_make_template(),
-                file_name="SPC_Data_Template.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            if st.button(
+                "📥 Save Template to Desktop",
                 use_container_width=True,
-                help="Download a pre-formatted Excel template with multiple measurement columns.",
-            )
+                help="Saves SPC_Data_Template.xlsx to ~/Desktop/SPC_Exports/",
+            ):
+                try:
+                    path = _save_file_to_desktop(_make_template(), "SPC_Data_Template.xlsx")
+                    _open_exports_folder()
+                    st.success(f"✅ Saved!\n`{path}`")
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
             if st.button("Clear All Data", use_container_width=True):
                 st.session_state.last_uploaded_signature = None
                 for char_name in st.session_state.characteristics:
@@ -5145,18 +5193,19 @@ with tab_viz:
         st.markdown("<br>", unsafe_allow_html=True)
         exp_cols = st.columns([1, 1, 3])
         with exp_cols[0]:
-            try:
-                excel_data = generate_full_report_excel(st.session_state.characteristics)
-                st.download_button(
-                    label="📥 Export Full Report (Excel)",
-                    data=excel_data,
-                    file_name=f"SPC_Full_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="primary",
-                )
-            except Exception as e:
-                st.error(f"Excel export failed: {e}")
+            if st.button(
+                "📥 Save Full Report (Excel)",
+                use_container_width=True, type="primary",
+                help="Saves Excel report to ~/Desktop/SPC_Exports/",
+            ):
+                try:
+                    excel_data = generate_full_report_excel(st.session_state.characteristics)
+                    fname = f"SPC_Full_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    path = _save_file_to_desktop(excel_data, fname)
+                    _open_exports_folder()
+                    st.success(f"✅ Saved!\n`{path}`")
+                except Exception as e:
+                    st.error(f"Excel export failed: {e}")
         with exp_cols[1]:
             # Per-characteristic PDF export for the active characteristic
             _pdf_char = st.session_state.active_characteristic_name
@@ -5165,22 +5214,24 @@ with tab_viz:
             _pdf_summary = _pdf_char_state.get("summary", {})
             _pdf_figs    = _pdf_char_state.get("figs", {})
             if _pdf_res and not _pdf_res.get("error"):
-                try:
-                    _pdf_bytes = PDFExportManager.export_capability_pdf(
-                        _pdf_res, _pdf_summary, _pdf_figs, _pdf_char
-                    )
-                    if _pdf_bytes:
-                        st.download_button(
-                            label=f"📄 Export PDF ({_pdf_char[:18]})",
-                            data=_pdf_bytes,
-                            file_name=f"SPC_Report_{_pdf_char}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True,
+                if st.button(
+                    f"📄 Save PDF ({_pdf_char[:18]})",
+                    use_container_width=True,
+                    help="Saves PDF report to ~/Desktop/SPC_Exports/",
+                ):
+                    try:
+                        _pdf_bytes = PDFExportManager.export_capability_pdf(
+                            _pdf_res, _pdf_summary, _pdf_figs, _pdf_char
                         )
-                    else:
-                        st.info("Install reportlab for PDF export: `pip install reportlab`")
-                except Exception as e:
-                    st.error(f"PDF export failed: {e}")
+                        if _pdf_bytes:
+                            fname = f"SPC_Report_{_pdf_char}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                            path = _save_file_to_desktop(_pdf_bytes, fname)
+                            _open_exports_folder()
+                            st.success(f"✅ Saved!\n`{path}`")
+                        else:
+                            st.info("Install reportlab for PDF export")
+                    except Exception as e:
+                        st.error(f"PDF export failed: {e}")
             else:
                 st.button("📄 Export PDF (run analysis first)", disabled=True, use_container_width=True)
 
@@ -6349,51 +6400,48 @@ with tab_history:
         btn_cols = st.columns([1, 1, 1, 1])
         with btn_cols[0]:
             if selected_ids:
-                try:
-                    selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
-                    exporter = ExportManager()
-                    history_buffer = exporter.export_selected_history(selected_history_data)
-                    st.download_button(
-                        label=f"📥 Excel ({len(selected_ids)} runs)",
-                        data=history_buffer,
-                        file_name=f"Capability_History_{datetime.date.today()}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                    )
-                except Exception as e:
-                    st.error(f"Excel export failed: {e}")
+                if st.button(f"📥 Excel ({len(selected_ids)} runs)", use_container_width=True):
+                    try:
+                        selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
+                        exporter = ExportManager()
+                        history_buffer = exporter.export_selected_history(selected_history_data)
+                        fname = f"Capability_History_{datetime.date.today()}.xlsx"
+                        path = _save_file_to_desktop(history_buffer, fname)
+                        _open_exports_folder()
+                        st.success(f"✅ Saved!\n`{path}`")
+                    except Exception as e:
+                        st.error(f"Excel export failed: {e}")
             else:
                 st.button("📥 Excel (select rows)", use_container_width=True, disabled=True)
 
         with btn_cols[1]:
             if selected_ids:
-                try:
-                    selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
-                    pdf_bytes = PDFExportManager.export_history_pdf(selected_history_data)
-                    if pdf_bytes:
-                        st.download_button(
-                            label=f"📄 PDF ({len(selected_ids)} runs)",
-                            data=pdf_bytes,
-                            file_name=f"SPC_History_{datetime.date.today()}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.info("`pip install reportlab` for PDF export")
-                except Exception as e:
-                    st.error(f"PDF export failed: {e}")
+                if st.button(f"📄 PDF ({len(selected_ids)} runs)", use_container_width=True):
+                    try:
+                        selected_history_data = [e for e in st.session_state.history if e.get("id") in selected_ids]
+                        pdf_bytes = PDFExportManager.export_history_pdf(selected_history_data)
+                        if pdf_bytes:
+                            fname = f"SPC_History_{datetime.date.today()}.pdf"
+                            path = _save_file_to_desktop(pdf_bytes, fname)
+                            _open_exports_folder()
+                            st.success(f"✅ Saved!\n`{path}`")
+                        else:
+                            st.info("`pip install reportlab` for PDF export")
+                    except Exception as e:
+                        st.error(f"PDF export failed: {e}")
             else:
                 st.button("📄 PDF (select rows)", use_container_width=True, disabled=True)
 
         with btn_cols[2]:
-            csv_data = pd.DataFrame(st.session_state.history).to_csv(index=False)
-            st.download_button(
-                "📋 Download CSV",
-                data=csv_data,
-                file_name=f"SPC_History_{datetime.date.today()}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
+            if st.button("📋 Save CSV", use_container_width=True, help="Saves full history CSV to ~/Desktop/SPC_Exports/"):
+                try:
+                    csv_bytes = pd.DataFrame(st.session_state.history).to_csv(index=False).encode("utf-8")
+                    fname = f"SPC_History_{datetime.date.today()}.csv"
+                    path = _save_file_to_desktop(csv_bytes, fname)
+                    _open_exports_folder()
+                    st.success(f"✅ Saved!\n`{path}`")
+                except Exception as e:
+                    st.error(f"CSV export failed: {e}")
         with btn_cols[3]:
             if st.button("🗑 Clear History", use_container_width=True):
                 st.session_state.history = []
@@ -6402,9 +6450,49 @@ with tab_history:
 
 
 
-# --- Tab 5: Reference ---
+# --- Tab 6: Reference ---
 with tab_ref:
     st.header("Reference Guide & Chatbot")
+
+    # --- Feedback panel at top of Reference tab (always visible) ---
+    with st.expander("📧 Report a Problem / Contact KST5KOR", expanded=False):
+        fb_c1, fb_c2 = st.columns([2, 1])
+        with fb_c1:
+            _fb_type = st.selectbox(
+                "Type",
+                ["🐛 Bug / Error", "💡 Feature Request", "❓ General Question", "👍 Other"],
+                key="fb_type", label_visibility="collapsed",
+            )
+            _fb_desc = st.text_area(
+                "Describe", placeholder="e.g. When I click Analyze the app shows error...",
+                height=90, key="fb_desc", label_visibility="collapsed",
+            )
+            _fb_steps = st.text_input("Steps (optional)",
+                placeholder="1. Open Visualization  2. Click...", key="fb_steps")
+            if st.button("📤 Generate Report Text", key="fb_gen"):
+                st.code(
+                    f"SPC Calculator — Feedback\nType: {_fb_type}\n"
+                    f"Description: {_fb_desc}\nSteps: {_fb_steps}\nContact: KST5KOR",
+                    language=None
+                )
+                st.success("✅ Copy the text above and send via Bosch Teams / Email to KST5KOR")
+        with fb_c2:
+            st.markdown(
+                """
+                <div style="padding:14px 18px;border-radius:10px;
+                border:1px solid rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);">
+                <p style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
+                font-weight:700;margin-bottom:6px;opacity:0.7;">Tool Owner</p>
+                <p style="font-size:26px;font-weight:900;letter-spacing:1px;margin-bottom:2px;">KST5KOR</p>
+                <p style="font-size:11px;opacity:0.6;margin-bottom:10px;">Developer &amp; Maintainer</p>
+                <hr style="border:none;border-top:1px solid rgba(128,128,128,0.2);margin:8px 0;">
+                <p style="font-size:11px;opacity:0.65;line-height:1.8;">
+                💬 Bosch Teams<br>📧 Internal Email<br>📦 SPC Calculator v2.1
+                </p></div>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.divider()
 
     ref_cols = st.columns([2, 1])
 
