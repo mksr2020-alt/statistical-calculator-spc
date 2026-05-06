@@ -176,13 +176,93 @@ SPLASH_HTML = """<!DOCTYPE html>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #0f172a;
+    background: #f8f9fa;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     height: 100vh;
     font-family: 'Segoe UI', system-ui, sans-serif;
-    color: #f1f5f9; overflow: hidden; user-select: none;
+    color: #1a1a1a; overflow: hidden; user-select: none;
   }
+  .card {
+    display: flex; flex-direction: column; align-items: center;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 48px 64px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  }
+  .icon-box {
+    width: 80px; height: 80px; border-radius: 18px;
+    background: #111827;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 42px; margin-bottom: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  }
+  h1 {
+    font-size: 24px; font-weight: 700;
+    color: #111827; letter-spacing: -0.4px;
+    margin-bottom: 4px;
+  }
+  .sub {
+    font-size: 12px; color: #9ca3af;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    margin-bottom: 40px; font-weight: 500;
+  }
+  .prog-wrap {
+    width: 220px; height: 2px;
+    background: #f3f4f6;
+    border-radius: 99px; overflow: hidden; margin-bottom: 14px;
+  }
+  .prog-bar {
+    height: 100%; width: 0%;
+    background: #111827;
+    border-radius: 99px;
+    animation: prog 5s cubic-bezier(0.4,0,0.2,1) forwards;
+  }
+  @keyframes prog { 0%{width:0%} 40%{width:55%} 70%{width:80%} 100%{width:93%} }
+  .status {
+    font-size: 11px; color: #9ca3af; letter-spacing: 0.3px;
+  }
+  .status::after {
+    content: 'Initializing...';
+    animation: txt 5s steps(1) infinite;
+  }
+  @keyframes txt {
+    0%{content:'Initializing...'}
+    25%{content:'Loading statistical modules...'}
+    50%{content:'Preparing visualization engine...'}
+    75%{content:'Almost ready...'}
+  }
+  .footer {
+    position: fixed; bottom: 20px;
+    font-size: 11px; color: #d1d5db;
+    letter-spacing: 0.3px;
+  }
+  .dot {
+    display: inline-block; width: 5px; height: 5px;
+    background: #d1d5db; border-radius: 50%;
+    margin: 0 3px; vertical-align: middle;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-box">&#931;</div>
+    <h1>SPC Calculator</h1>
+    <p class="sub">Statistical Process Capability</p>
+    <div class="prog-wrap"><div class="prog-bar"></div></div>
+    <p class="status"></p>
+  </div>
+  <p class="footer">
+    Starting application
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  </p>
+</body>
+</html>"""
   body::before {
     content: ''; position: fixed; inset: 0;
     background-image: linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
@@ -244,24 +324,29 @@ ERROR_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Error</title>
 <style>
-  body { background:#0f172a; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; height:100vh; font-family:'Segoe UI',sans-serif; color:#f1f5f9; }
-  .icon { font-size:56px; margin-bottom:20px; }
-  h1 { font-size:22px; color:#f87171; margin-bottom:12px; }
-  p { font-size:14px; color:#64748b; max-width:480px; text-align:center; line-height:1.7; }
-  code { background:#1e293b; padding:2px 8px; border-radius:4px; font-size:12px; color:#94a3b8; }
+  body { background:#f8f9fa; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; height:100vh; font-family:'Segoe UI',sans-serif; color:#111827; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px;
+    padding:48px 64px; text-align:center;
+    box-shadow:0 4px 24px rgba(0,0,0,0.08); }
+  .icon { font-size:48px; margin-bottom:16px; }
+  h1 { font-size:20px; color:#dc2626; margin-bottom:10px; font-weight:700; }
+  p { font-size:13px; color:#6b7280; max-width:420px; line-height:1.7; }
+  code { background:#f3f4f6; padding:2px 8px; border-radius:4px;
+    font-size:11px; color:#374151; border:1px solid #e5e7eb; }
 </style>
 </head>
 <body>
-  <div class="icon">&#9888;&#65039;</div>
-  <h1>Application Failed to Start</h1>
-  <p>
-    The internal server could not be reached within 90 seconds.<br>
-    Please close this window and try again.<br><br>
-    <strong>Check for details:</strong><br>
-    A log file <code>spc_launcher.log</code> has been saved next to the .exe<br>
-    with the full error message.
-  </p>
+  <div class="card">
+    <div class="icon">&#9888;&#65039;</div>
+    <h1>Application Failed to Start</h1>
+    <p>
+      The internal server could not be reached within 90 seconds.<br>
+      Please close this window and try again.<br><br>
+      A log file <code>spc_launcher.log</code> has been saved<br>
+      next to the .exe with the full error message.
+    </p>
+  </div>
 </body>
 </html>"""
 

@@ -38,13 +38,9 @@ jobs:
       # ── 4. Install all app and build dependencies ─────────────────────────
       - name: Install dependencies
         run: |
-          pip install streamlit>=1.30.0
-          pip install pandas>=2.0.0 numpy>=1.24 scipy>=1.10
-          pip install plotly>=5.18.0 kaleido>=0.2.1
-          pip install openpyxl>=3.1.0 reportlab>=4.0.0
-          pip install pywebview>=4.4.0
-          pip install pyinstaller>=6.0.0
-          pip install Pillow>=10.0.0
+          pip install -r requirements.txt
+          pip install "protobuf>=4.21.0,<5.0.0"
+          pip install pyinstaller>=6.0.0 Pillow>=10.0.0
 
       # ── 5. Convert PNG icon → multi-resolution Windows .ico ──────────────
       - name: Generate Windows icon
