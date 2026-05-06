@@ -124,6 +124,8 @@ hiddenimports += ["webview", "webview.platforms.winforms"]
 
 # Standard library modules sometimes missed
 hiddenimports += ["pkg_resources.py2_warn", "packaging.version", "packaging.specifiers"]
+hiddenimports += ["pydoc", "docutils", "docutils.parsers.rst"]
+hiddenimports += collect_submodules("pyarrow")
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
@@ -155,10 +157,7 @@ a = Analysis(
         "pylint",
         "pytest",
         "sphinx",
-        "docutils",
-        "pydoc",
-        "test",
-        "unittest",
+        # NOTE: do NOT exclude pydoc, docutils, test, unittest — needed by pyarrow/pandas
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

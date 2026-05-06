@@ -160,7 +160,20 @@ def run_streamlit(port: int) -> None:
         log.info('Calling streamlit bootstrap.run()...')
         bootstrap.load_config_options(flag_options=flag_options)
         flag_options['_is_running_with_streamlit'] = True
-        bootstrap.run(app_path, 'streamlit run', [], flag_options)
+
+        # Detect which bootstrap.run() API version is installed:
+        #   Old Streamlit (<1.12): run(main_script_path, is_hello: bool, args, flag_options)
+        #   New Streamlit (>=1.12): run(main_script_path, command_line: str, args, flag_options)
+        import inspect
+        sig_params = list(inspect.signature(bootstrap.run).parameters.keys())
+        log.info(f'bootstrap.run signature params: {sig_params}')
+
+        if len(sig_params) > 1 and sig_params[1] == 'is_hello':
+            # Old API — second arg must be a bool
+            bootstrap.run(app_path, False, [], flag_options)
+        else:
+            # New API — second arg is command_line string
+            bootstrap.run(app_path, 'streamlit run', [], flag_options)
 
     except Exception as e:
         log.exception(f'Streamlit failed to start: {e}')
