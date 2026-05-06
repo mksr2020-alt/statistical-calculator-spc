@@ -64,7 +64,7 @@ def _save_settings(settings_dict):
 
 
 def _save_file_to_desktop(data: bytes, filename: str) -> str:
-    """Save exported file to ~/Desktop/SPC_Exports/ and return the full path."""
+    """Fallback: save to ~/Desktop/SPC_Exports/ without dialog."""
     export_dir = pathlib.Path.home() / "Desktop" / "SPC_Exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     out_path = export_dir / filename
@@ -73,8 +73,56 @@ def _save_file_to_desktop(data: bytes, filename: str) -> str:
     return str(out_path)
 
 
+def _save_file_with_dialog(data: bytes, default_filename: str) -> str | None:
+    """Show a native Windows 'Save As' dialog, write the file, return path.
+    Falls back to Desktop/SPC_Exports/ if tkinter is unavailable or cancelled."""
+    ext = default_filename.rsplit(".", 1)[-1].lower() if "." in default_filename else ""
+    filetypes_map = {
+        "xlsx": [("Excel Workbook", "*.xlsx"), ("All Files", "*.*")],
+        "pdf":  [("PDF Document", "*.pdf"),   ("All Files", "*.*")],
+        "csv":  [("CSV File", "*.csv"),        ("All Files", "*.*")],
+    }
+    filetypes = filetypes_map.get(ext, [("All Files", "*.*")])
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()                     # hide the empty Tk window
+        root.attributes("-topmost", True)   # bring dialog to front
+        root.after(100, root.focus_force)
+        chosen = filedialog.asksaveasfilename(
+            parent=root,
+            title="Save As",
+            initialfile=default_filename,
+            defaultextension=f".{ext}",
+            filetypes=filetypes,
+        )
+        root.destroy()
+        if not chosen:
+            return None  # user cancelled
+        path = str(chosen)
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+    except Exception:
+        # tkinter unavailable — fall back to desktop folder
+        return _save_file_to_desktop(data, default_filename)
+
+
+def _open_folder_for_path(path: str):
+    """Open Windows Explorer at the folder of the saved file."""
+    folder = str(pathlib.Path(path).parent)
+    try:
+        subprocess.Popen(["explorer", folder])
+    except Exception:
+        try:
+            os.startfile(folder)
+        except Exception:
+            pass
+
+
 def _open_exports_folder():
-    """Open the SPC_Exports folder in Windows Explorer."""
+    """Open the SPC_Exports folder in Windows Explorer (fallback)."""
     export_dir = pathlib.Path.home() / "Desktop" / "SPC_Exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -5009,14 +5057,17 @@ with tab_data:
                 return buf.getvalue()
 
             if st.button(
-                "📥 Save Template to Desktop",
+                "📥 Save Template",
                 use_container_width=True,
-                help="Saves SPC_Data_Template.xlsx to ~/Desktop/SPC_Exports/",
+                help="Choose where to save SPC_Data_Template.xlsx",
             ):
                 try:
-                    path = _save_file_to_desktop(_make_template(), "SPC_Data_Template.xlsx")
-                    _open_exports_folder()
-                    st.success(f"✅ Saved!\n`{path}`")
+                    path = _save_file_with_dialog(_make_template(), "SPC_Data_Template.xlsx")
+                    if path:
+                        _open_folder_for_path(path)
+                        st.success(f"✅ Saved to:\n`{path}`")
+                    else:
+                        st.info("Save cancelled.")
                 except Exception as e:
                     st.error(f"Save failed: {e}")
             if st.button("Clear All Data", use_container_width=True):
@@ -5196,14 +5247,17 @@ with tab_viz:
             if st.button(
                 "📥 Save Full Report (Excel)",
                 use_container_width=True, type="primary",
-                help="Saves Excel report to ~/Desktop/SPC_Exports/",
+                help="Choose where to save the Excel report",
             ):
                 try:
                     excel_data = generate_full_report_excel(st.session_state.characteristics)
                     fname = f"SPC_Full_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    path = _save_file_to_desktop(excel_data, fname)
-                    _open_exports_folder()
-                    st.success(f"✅ Saved!\n`{path}`")
+                    path = _save_file_with_dialog(excel_data, fname)
+                    if path:
+                        _open_folder_for_path(path)
+                        st.success(f"✅ Saved to:\n`{path}`")
+                    else:
+                        st.info("Save cancelled.")
                 except Exception as e:
                     st.error(f"Excel export failed: {e}")
         with exp_cols[1]:
@@ -5217,7 +5271,7 @@ with tab_viz:
                 if st.button(
                     f"📄 Save PDF ({_pdf_char[:18]})",
                     use_container_width=True,
-                    help="Saves PDF report to ~/Desktop/SPC_Exports/",
+                    help="Choose where to save the PDF report",
                 ):
                     try:
                         _pdf_bytes = PDFExportManager.export_capability_pdf(
@@ -5225,9 +5279,12 @@ with tab_viz:
                         )
                         if _pdf_bytes:
                             fname = f"SPC_Report_{_pdf_char}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                            path = _save_file_to_desktop(_pdf_bytes, fname)
-                            _open_exports_folder()
-                            st.success(f"✅ Saved!\n`{path}`")
+                            path = _save_file_with_dialog(_pdf_bytes, fname)
+                            if path:
+                                _open_folder_for_path(path)
+                                st.success(f"✅ Saved to:\n`{path}`")
+                            else:
+                                st.info("Save cancelled.")
                         else:
                             st.info("Install reportlab for PDF export")
                     except Exception as e:
@@ -6406,9 +6463,12 @@ with tab_history:
                         exporter = ExportManager()
                         history_buffer = exporter.export_selected_history(selected_history_data)
                         fname = f"Capability_History_{datetime.date.today()}.xlsx"
-                        path = _save_file_to_desktop(history_buffer, fname)
-                        _open_exports_folder()
-                        st.success(f"✅ Saved!\n`{path}`")
+                        path = _save_file_with_dialog(history_buffer, fname)
+                        if path:
+                            _open_folder_for_path(path)
+                            st.success(f"✅ Saved to:\n`{path}`")
+                        else:
+                            st.info("Save cancelled.")
                     except Exception as e:
                         st.error(f"Excel export failed: {e}")
             else:
@@ -6422,9 +6482,12 @@ with tab_history:
                         pdf_bytes = PDFExportManager.export_history_pdf(selected_history_data)
                         if pdf_bytes:
                             fname = f"SPC_History_{datetime.date.today()}.pdf"
-                            path = _save_file_to_desktop(pdf_bytes, fname)
-                            _open_exports_folder()
-                            st.success(f"✅ Saved!\n`{path}`")
+                            path = _save_file_with_dialog(pdf_bytes, fname)
+                            if path:
+                                _open_folder_for_path(path)
+                                st.success(f"✅ Saved to:\n`{path}`")
+                            else:
+                                st.info("Save cancelled.")
                         else:
                             st.info("`pip install reportlab` for PDF export")
                     except Exception as e:
@@ -6433,13 +6496,16 @@ with tab_history:
                 st.button("📄 PDF (select rows)", use_container_width=True, disabled=True)
 
         with btn_cols[2]:
-            if st.button("📋 Save CSV", use_container_width=True, help="Saves full history CSV to ~/Desktop/SPC_Exports/"):
+            if st.button("📋 Save CSV", use_container_width=True, help="Choose where to save the history CSV"):
                 try:
                     csv_bytes = pd.DataFrame(st.session_state.history).to_csv(index=False).encode("utf-8")
                     fname = f"SPC_History_{datetime.date.today()}.csv"
-                    path = _save_file_to_desktop(csv_bytes, fname)
-                    _open_exports_folder()
-                    st.success(f"✅ Saved!\n`{path}`")
+                    path = _save_file_with_dialog(csv_bytes, fname)
+                    if path:
+                        _open_folder_for_path(path)
+                        st.success(f"✅ Saved to:\n`{path}`")
+                    else:
+                        st.info("Save cancelled.")
                 except Exception as e:
                     st.error(f"CSV export failed: {e}")
         with btn_cols[3]:
