@@ -263,62 +263,6 @@ SPLASH_HTML = """<!DOCTYPE html>
   </p>
 </body>
 </html>"""
-  body::before {
-    content: ''; position: fixed; inset: 0;
-    background-image: linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
-    background-size: 40px 40px;
-    animation: gridMove 20s linear infinite; pointer-events: none;
-  }
-  @keyframes gridMove { from { transform: translateY(0); } to { transform: translateY(40px); } }
-  .card { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
-  .icon-ring {
-    width: 100px; height: 100px; border-radius: 28px;
-    background: linear-gradient(135deg, #1d4ed8 0%, #7c3aed 100%);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 52px; margin-bottom: 28px;
-    box-shadow: 0 8px 32px rgba(59,130,246,0.35), 0 0 80px rgba(124,58,237,0.2);
-    animation: pulse 3s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%,100% { box-shadow: 0 8px 32px rgba(59,130,246,0.35), 0 0 80px rgba(124,58,237,0.2); }
-    50% { box-shadow: 0 8px 48px rgba(59,130,246,0.5), 0 0 120px rgba(124,58,237,0.35); }
-  }
-  h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.8px;
-    background: linear-gradient(90deg,#60a5fa,#a78bfa);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text; margin-bottom: 6px; }
-  .sub { font-size: 13px; color: #64748b; letter-spacing: 1.5px;
-    text-transform: uppercase; margin-bottom: 52px; }
-  .prog-wrap { width: 240px; height: 3px; background: rgba(255,255,255,0.07);
-    border-radius: 99px; overflow: hidden; margin-bottom: 18px; }
-  .prog-bar { height: 100%; width: 0%;
-    background: linear-gradient(90deg,#3b82f6,#8b5cf6);
-    border-radius: 99px; animation: prog 6s ease-out forwards; }
-  @keyframes prog { 0%{width:0%} 30%{width:40%} 60%{width:75%} 100%{width:92%} }
-  .status { font-size: 12px; color: #475569; }
-  .status::after {
-    content: 'Initializing engine...';
-    animation: txt 6s steps(1) infinite;
-  }
-  @keyframes txt {
-    0%{content:'Initializing engine...'} 25%{content:'Loading statistical modules...'}
-    50%{content:'Preparing visualization engine...'} 75%{content:'Almost ready...'}
-  }
-  .ver { position: fixed; bottom: 20px; font-size: 11px; color: #1e293b; }
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon-ring">&#931;</div>
-    <h1>SPC Calculator</h1>
-    <p class="sub">Statistical Process Capability</p>
-    <div class="prog-wrap"><div class="prog-bar"></div></div>
-    <p class="status"></p>
-  </div>
-  <p class="ver">v2.0 &nbsp;&middot;&nbsp; Statistical Process Control Suite</p>
-</body>
-</html>"""
 
 ERROR_HTML = """<!DOCTYPE html>
 <html lang="en">
