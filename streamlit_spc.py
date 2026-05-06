@@ -4186,16 +4186,39 @@ def set_ui_theme(theme_name):
     except Exception:
         pass
 
-# --- Main App UI ---
-st.markdown(
-    """
-    <div class="app-shell">
-        <h1 class="app-shell-title">Statistical Process Capability & AI Data Analytics</h1>
-        <div class="app-shell-subtitle">Capability analysis, worksheet intelligence, predictive health, and production-ready quality interpretation.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# --- Main App UI — Header with inline theme toggle ---
+_hdr_col, _theme_col = st.columns([3, 1], gap="small")
+with _hdr_col:
+    st.markdown(
+        '<div class="app-shell">'
+        '<h1 class="app-shell-title">Statistical Process Capability &amp; AI Data Analytics</h1>'
+        '<div class="app-shell-subtitle">Capability analysis, worksheet intelligence, predictive health, and production-ready quality interpretation.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+with _theme_col:
+    st.markdown(
+        '<p style="font-size:10px;color:#94a3b8;text-transform:uppercase;'
+        'letter-spacing:1.2px;margin:14px 0 4px;font-weight:600;text-align:right;">Theme</p>',
+        unsafe_allow_html=True,
+    )
+    _tc1, _tc2, _tc3 = st.columns(3)
+    _cur_theme = st.session_state.get("ui_theme", "Midnight")
+    with _tc1:
+        if st.button("☀️", key="hdr_theme_light", help="Light theme",
+                     use_container_width=True,
+                     type="primary" if _cur_theme == "Light" else "secondary"):
+            set_ui_theme("Light"); st.rerun()
+    with _tc2:
+        if st.button("🌙", key="hdr_theme_mid", help="Midnight dark theme",
+                     use_container_width=True,
+                     type="primary" if _cur_theme == "Midnight" else "secondary"):
+            set_ui_theme("Midnight"); st.rerun()
+    with _tc3:
+        if st.button("⚫", key="hdr_theme_gra", help="Graphite dark theme",
+                     use_container_width=True,
+                     type="primary" if _cur_theme == "Graphite" else "secondary"):
+            set_ui_theme("Graphite"); st.rerun()
 
 # Define Tabs
 tab_analysis, tab_data, tab_viz, tab_ai, tab_history, tab_ref = st.tabs(
