@@ -4186,8 +4186,8 @@ def set_ui_theme(theme_name):
     except Exception:
         pass
 
-# --- Main App UI — Header with inline theme toggle ---
-_hdr_col, _theme_col = st.columns([3, 1], gap="small")
+# --- Main App UI — Header with compact theme toggle ---
+_hdr_col, _theme_col = st.columns([4, 1], gap="small")
 with _hdr_col:
     st.markdown(
         '<div class="app-shell">'
@@ -4197,28 +4197,21 @@ with _hdr_col:
         unsafe_allow_html=True,
     )
 with _theme_col:
-    st.markdown(
-        '<p style="font-size:10px;color:#94a3b8;text-transform:uppercase;'
-        'letter-spacing:1.2px;margin:14px 0 4px;font-weight:600;text-align:right;">Theme</p>',
-        unsafe_allow_html=True,
-    )
-    _tc1, _tc2, _tc3 = st.columns(3)
+    _theme_map = {"☀️ Light": "Light", "🌙 Midnight": "Midnight", "⚫ Graphite": "Graphite"}
+    _theme_labels = list(_theme_map.keys())
     _cur_theme = st.session_state.get("ui_theme", "Midnight")
-    with _tc1:
-        if st.button("☀️", key="hdr_theme_light", help="Light theme",
-                     use_container_width=True,
-                     type="primary" if _cur_theme == "Light" else "secondary"):
-            set_ui_theme("Light"); st.rerun()
-    with _tc2:
-        if st.button("🌙", key="hdr_theme_mid", help="Midnight dark theme",
-                     use_container_width=True,
-                     type="primary" if _cur_theme == "Midnight" else "secondary"):
-            set_ui_theme("Midnight"); st.rerun()
-    with _tc3:
-        if st.button("⚫", key="hdr_theme_gra", help="Graphite dark theme",
-                     use_container_width=True,
-                     type="primary" if _cur_theme == "Graphite" else "secondary"):
-            set_ui_theme("Graphite"); st.rerun()
+    _cur_label = next((k for k, v in _theme_map.items() if v == _cur_theme), _theme_labels[1])
+    _sel_label = st.selectbox(
+        "Theme",
+        _theme_labels,
+        index=_theme_labels.index(_cur_label),
+        key="compact_theme_select",
+        label_visibility="collapsed",
+    )
+    if _theme_map[_sel_label] != _cur_theme:
+        set_ui_theme(_theme_map[_sel_label])
+        st.rerun()
+
 
 # Define Tabs
 tab_analysis, tab_data, tab_viz, tab_ai, tab_history, tab_ref = st.tabs(
@@ -5215,126 +5208,129 @@ with tab_viz:
                 if len(viz_data) >= 2:
                     import plotly.graph_objects as go
                     st.subheader(f"Worksheet Distribution — {viz_char_name}")
-                    preview_cols = st.columns(2)
+                    with st.spinner("📊 Rendering distribution charts..."):
+                        preview_cols = st.columns(2)
 
-                    with preview_cols[0]:
-                        fig_hist_preview = go.Figure()
-                        fig_hist_preview.add_trace(
-                            go.Histogram(
-                                x=viz_data,
-                                nbinsx=min(30, max(10, len(viz_data) // 10)),
-                                marker_color="#3B82F6",
-                                marker_line_color="rgba(37,99,235,0.6)",
-                                marker_line_width=0.5,
-                                opacity=0.80,
-                                name="Data",
-                                hovertemplate="Value: %{x}<br>Count: %{y}<extra></extra>",
+                        with preview_cols[0]:
+                            fig_hist_preview = go.Figure()
+                            fig_hist_preview.add_trace(
+                                go.Histogram(
+                                    x=viz_data,
+                                    nbinsx=min(30, max(10, len(viz_data) // 10)),
+                                    marker_color="#3B82F6",
+                                    marker_line_color="rgba(37,99,235,0.6)",
+                                    marker_line_width=0.5,
+                                    opacity=0.80,
+                                    name="Data",
+                                    hovertemplate="Value: %{x}<br>Count: %{y}<extra></extra>",
+                                )
                             )
-                        )
-                        fig_hist_preview.update_layout(
-                            title=dict(text="Distribution Histogram", font=dict(size=11, color=_plot_font)),
-                            height=310,
-                            margin=dict(l=50, r=20, t=46, b=46),
-                            showlegend=False,
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color=_plot_font, size=10),
-                            xaxis=dict(
-                                gridcolor=_plot_grid, linecolor=_plot_line,
-                                fixedrange=False, automargin=True,
-                                showspikes=True, spikemode="across",
-                                spikesnap="cursor", spikecolor=_plot_line,
-                                spikethickness=1, spikedash="dot",
-                            ),
-                            yaxis=dict(
-                                gridcolor=_plot_grid, linecolor=_plot_line,
-                                fixedrange=False, automargin=True,
-                            ),
-                            bargap=0.04,
-                            hovermode="x",
-                            hoverlabel=dict(
-                                font_size=11, bgcolor=_plot_hover_bg,
-                                font_color=_plot_hover_text, bordercolor=_plot_line,
-                            ),
-                            dragmode="pan",
-                            transition=dict(duration=0),
-                        )
-                        st.plotly_chart(
-                            fig_hist_preview,
-                            use_container_width=True,
-                            config=PlotManager.PLOT_CONFIG,
-                            key=f"viz_hist_preview_{viz_char_name}",
-                        )
+                            fig_hist_preview.update_layout(
+                                title=dict(text="Distribution Histogram", font=dict(size=11, color=_plot_font)),
+                                height=310,
+                                margin=dict(l=50, r=20, t=46, b=46),
+                                showlegend=False,
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color=_plot_font, size=10),
+                                xaxis=dict(
+                                    gridcolor=_plot_grid, linecolor=_plot_line,
+                                    fixedrange=False, automargin=True,
+                                    showspikes=True, spikemode="across",
+                                    spikesnap="cursor", spikecolor=_plot_line,
+                                    spikethickness=1, spikedash="dot",
+                                ),
+                                yaxis=dict(
+                                    gridcolor=_plot_grid, linecolor=_plot_line,
+                                    fixedrange=False, automargin=True,
+                                ),
+                                bargap=0.04,
+                                hovermode="x",
+                                hoverlabel=dict(
+                                    font_size=11, bgcolor=_plot_hover_bg,
+                                    font_color=_plot_hover_text, bordercolor=_plot_line,
+                                ),
+                                dragmode="pan",
+                                transition=dict(duration=0),
+                            )
+                            st.plotly_chart(
+                                fig_hist_preview,
+                                use_container_width=True,
+                                config=PlotManager.PLOT_CONFIG,
+                                key=f"viz_hist_preview_{viz_char_name}",
+                            )
 
-                    with preview_cols[1]:
-                        fig_box = go.Figure()
-                        fig_box.add_trace(
-                            go.Box(
-                                y=viz_data,
-                                marker_color="#10B981",
-                                marker_size=4,
-                                line_color="#059669",
-                                boxpoints="outliers",
-                                jitter=0.3,
-                                pointpos=0,
-                                name="Values",
-                                hovertemplate="Value: %{y:.4f}<extra></extra>",
+                        with preview_cols[1]:
+                            fig_box = go.Figure()
+                            fig_box.add_trace(
+                                go.Box(
+                                    y=viz_data,
+                                    marker_color="#10B981",
+                                    marker_size=4,
+                                    line_color="#059669",
+                                    boxpoints="outliers",
+                                    jitter=0.3,
+                                    pointpos=0,
+                                    name="Values",
+                                    hovertemplate="Value: %{y:.4f}<extra></extra>",
+                                )
                             )
-                        )
-                        _bq1 = float(np.percentile(viz_data, 25))
-                        _bq3 = float(np.percentile(viz_data, 75))
-                        _bpad = max((_bq3 - _bq1) * 1.5, abs(np.std(viz_data)) * 0.5, 0.01)
-                        fig_box.update_layout(
-                            title=dict(text="Box Plot", font=dict(size=11, color=_plot_font)),
-                            height=310,
-                            margin=dict(l=50, r=20, t=46, b=46),
-                            showlegend=False,
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color=_plot_font, size=10),
-                            xaxis=dict(
-                                gridcolor=_plot_grid, linecolor=_plot_line,
-                                fixedrange=True,  # X fixed — box plot X is categorical
-                                automargin=True,
-                            ),
-                            yaxis=dict(
-                                gridcolor=_plot_grid, linecolor=_plot_line,
-                                fixedrange=False,  # Y zoom for inspecting distributions
-                                automargin=True,
-                                range=[_bq1 - _bpad * 2, _bq3 + _bpad * 2],
-                            ),
-                            hovermode="closest",
-                            hoverlabel=dict(
-                                font_size=11, bgcolor=_plot_hover_bg,
-                                font_color=_plot_hover_text, bordercolor=_plot_line,
-                            ),
-                            dragmode="pan",
-                            transition=dict(duration=0),
-                        )
-                        st.plotly_chart(
-                            fig_box, use_container_width=True, config=PlotManager.PLOT_CONFIG,
-                            key=f"viz_box_{viz_char_name}",
-                        )
+                            _bq1 = float(np.percentile(viz_data, 25))
+                            _bq3 = float(np.percentile(viz_data, 75))
+                            _bpad = max((_bq3 - _bq1) * 1.5, abs(np.std(viz_data)) * 0.5, 0.01)
+                            fig_box.update_layout(
+                                title=dict(text="Box Plot", font=dict(size=11, color=_plot_font)),
+                                height=310,
+                                margin=dict(l=50, r=20, t=46, b=46),
+                                showlegend=False,
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color=_plot_font, size=10),
+                                xaxis=dict(
+                                    gridcolor=_plot_grid, linecolor=_plot_line,
+                                    fixedrange=True,
+                                    automargin=True,
+                                ),
+                                yaxis=dict(
+                                    gridcolor=_plot_grid, linecolor=_plot_line,
+                                    fixedrange=False,
+                                    automargin=True,
+                                    range=[_bq1 - _bpad * 2, _bq3 + _bpad * 2],
+                                ),
+                                hovermode="closest",
+                                hoverlabel=dict(
+                                    font_size=11, bgcolor=_plot_hover_bg,
+                                    font_color=_plot_hover_text, bordercolor=_plot_line,
+                                ),
+                                dragmode="pan",
+                                transition=dict(duration=0),
+                            )
+                            st.plotly_chart(
+                                fig_box, use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                                key=f"viz_box_{viz_char_name}",
+                            )
 
                 if figs and figs.get("before") and figs.get("after"):
-                    viz_cols = st.columns(2)
-                    with viz_cols[0]:
-                        st.plotly_chart(
-                            figs["before"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
-                            key=f"viz_before_{viz_char_name}",
-                        )
-                    with viz_cols[1]:
-                        st.plotly_chart(
-                            figs["after"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
-                            key=f"viz_after_{viz_char_name}",
-                        )
+                    with st.spinner("📊 Rendering capability charts..."):
+                        viz_cols = st.columns(2)
+                        with viz_cols[0]:
+                            st.plotly_chart(
+                                figs["before"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                                key=f"viz_before_{viz_char_name}",
+                            )
+                        with viz_cols[1]:
+                            st.plotly_chart(
+                                figs["after"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                                key=f"viz_after_{viz_char_name}",
+                            )
 
                     if figs.get("hist"):
                         st.subheader("Data Distribution Analysis")
-                        st.plotly_chart(
-                            figs["hist"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
-                            key=f"viz_hist_{viz_char_name}",
-                        )
+                        with st.spinner("📊 Rendering histogram..."):
+                            st.plotly_chart(
+                                figs["hist"], use_container_width=True, config=PlotManager.PLOT_CONFIG,
+                                key=f"viz_hist_{viz_char_name}",
+                            )
 
                     # --- Control Charts (I-Chart + MR-Chart with Filter) ---
                     # Use importedData from results if available, otherwise fall back to worksheet data
@@ -6591,6 +6587,72 @@ This tool performs a **one-sample t-test** to determine if μ differs from Tₘ:
             st.session_state.chat_messages.append(
                 {"role": "assistant", "content": response}
             )
+
+# --- Feedback & Support Section ---
+st.divider()
+with st.expander("📧 Report a Problem / Feedback", expanded=False):
+    fb_col1, fb_col2 = st.columns([2, 1])
+    with fb_col1:
+        st.markdown(
+            """
+            <div style="padding:4px 0 10px;">
+              <p style="font-size:13px;margin-bottom:6px;">
+                Found a bug or have a suggestion? Fill in the details below and send to the tool owner.
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        _fb_type = st.selectbox(
+            "Type",
+            ["🐛 Bug / Error", "💡 Feature Request", "❓ General Question", "👍 Other"],
+            key="fb_type",
+            label_visibility="collapsed",
+        )
+        _fb_desc = st.text_area(
+            "Describe the problem",
+            placeholder="e.g. When I click Analyze, the app crashes with error...",
+            height=100,
+            key="fb_desc",
+            label_visibility="collapsed",
+        )
+        _fb_steps = st.text_input(
+            "Steps to reproduce (optional)",
+            placeholder="1. Open Visualization tab  2. Click...",
+            key="fb_steps",
+        )
+        if st.button("📤 Copy Report to Clipboard", use_container_width=False):
+            _report_text = (
+                f"SPC Calculator — Feedback Report\n"
+                f"Type: {_fb_type}\n"
+                f"Description: {_fb_desc}\n"
+                f"Steps: {_fb_steps}\n"
+                f"Contact: KST5KOR"
+            )
+            st.code(_report_text, language=None)
+            st.success("✅ Copy the text above and send to KST5KOR via Teams/Email!")
+
+    with fb_col2:
+        st.markdown(
+            """
+            <div style="padding:12px 16px;border-radius:10px;border:1px solid rgba(59,130,246,0.25);
+                        background:rgba(59,130,246,0.07);">
+              <p style="font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
+                        font-weight:700;margin-bottom:8px;opacity:0.7;">Contact</p>
+              <p style="font-size:22px;font-weight:800;margin-bottom:4px;letter-spacing:1px;">KST5KOR</p>
+              <p style="font-size:11px;opacity:0.65;margin-bottom:12px;">
+                Tool Owner &amp; Developer
+              </p>
+              <hr style="border:none;border-top:1px solid rgba(128,128,128,0.2);margin:10px 0;">
+              <p style="font-size:11px;opacity:0.65;">
+                💬 Bosch Teams<br>
+                📧 Internal Email<br>
+                📦 SPC Calculator v2.1
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 # --- Floating Sigma Assistant (Clippy-style) ---
 # This renders as a fixed position widget in the bottom-right corner of the page
