@@ -5,6 +5,60 @@ import math
 import io
 import datetime
 import re
+import json
+import os
+import pathlib
+
+# ── Persistent storage helpers ─────────────────────────────────────────────────
+_SPC_DATA_DIR = pathlib.Path.home() / ".spc_calculator"
+_HISTORY_FILE = _SPC_DATA_DIR / "history.json"
+_SETTINGS_FILE = _SPC_DATA_DIR / "settings.json"
+
+def _ensure_data_dir():
+    _SPC_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+def _load_history():
+    """Load persisted history from disk."""
+    try:
+        _ensure_data_dir()
+        if _HISTORY_FILE.exists():
+            with open(_HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+    except Exception:
+        pass
+    return []
+
+def _save_history(history_list):
+    """Persist history list to disk atomically."""
+    try:
+        _ensure_data_dir()
+        tmp = _HISTORY_FILE.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(history_list[:250], f, ensure_ascii=False, default=str)
+        tmp.replace(_HISTORY_FILE)
+    except Exception:
+        pass
+
+def _load_settings():
+    """Load persisted settings from disk."""
+    try:
+        _ensure_data_dir()
+        if _SETTINGS_FILE.exists():
+            with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_settings(settings_dict):
+    """Persist settings to disk."""
+    try:
+        _ensure_data_dir()
+        with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings_dict, f, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 NELSON_RULE_NAMES = {
@@ -2149,6 +2203,47 @@ class SigmaAssistant:
                 unsafe_allow_html=True,
             )
 
+            # ── Theme Toggle ─────────────────────────────────────────────────
+            st.markdown(
+                '<p style="font-size:11px;color:var(--muted,#94a3b8);text-transform:uppercase;'
+                'letter-spacing:1.2px;margin:8px 0 4px;font-weight:600;">Display Theme</p>',
+                unsafe_allow_html=True,
+            )
+            _theme_cols = st.columns(3)
+            _current_theme = st.session_state.get("ui_theme", "Midnight")
+            with _theme_cols[0]:
+                if st.button(
+                    "☀️ Light",
+                    use_container_width=True,
+                    type="primary" if _current_theme == "Light" else "secondary",
+                    key="btn_theme_light",
+                    help="Switch to Light theme",
+                ):
+                    set_ui_theme("Light")
+                    st.rerun()
+            with _theme_cols[1]:
+                if st.button(
+                    "🌙 Midnight",
+                    use_container_width=True,
+                    type="primary" if _current_theme == "Midnight" else "secondary",
+                    key="btn_theme_midnight",
+                    help="Switch to Midnight (dark blue) theme",
+                ):
+                    set_ui_theme("Midnight")
+                    st.rerun()
+            with _theme_cols[2]:
+                if st.button(
+                    "⚫ Graphite",
+                    use_container_width=True,
+                    type="primary" if _current_theme == "Graphite" else "secondary",
+                    key="btn_theme_graphite",
+                    help="Switch to Graphite (dark grey) theme",
+                ):
+                    set_ui_theme("Graphite")
+                    st.rerun()
+
+            st.divider()
+
             if _is_light_theme:
                 st.warning(
                     "**Light Theme Notice**\n\n"
@@ -3699,13 +3794,79 @@ _plot_legend_bg = None
 st.markdown(
     """
 <style>
-    /* === HIDE STREAMLIT DEFAULTS === */
+    /* === HIDE STREAMLIT DEFAULTS (clean desktop feel) === */
     .stDeployButton {display: none !important;}
     #MainMenu {display: none !important;}
     header {display: none !important;}
     footer {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    [data-testid="stStatusWidget"] {display: none !important;}
+    .viewerBadge_container__1QSob {display: none !important;}
     .stMainBlockContainer {padding-top: 0.55rem !important;}
     .block-container {padding-top: 0.55rem !important; padding-left: 1rem !important; padding-right: 1rem !important; max-width: 98rem;}
+
+    /* === DESKTOP FONT STACK === */
+    html, body, [class*="css"] {
+        font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif !important;
+    }
+
+    /* === CUSTOM SCROLLBAR (thin, OS-native style) === */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.35); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.55); }
+
+    /* === SIDEBAR as native panel === */
+    [data-testid="stSidebar"] {
+        border-right: 1px solid rgba(128,128,128,0.15) !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 0.75rem !important;
+    }
+
+    /* === BUTTONS — desktop compact style === */
+    .stButton > button {
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        font-size: 0.83rem !important;
+        letter-spacing: 0.02em !important;
+        transition: all 0.15s ease !important;
+    }
+    .stButton > button[kind="primary"] {
+        box-shadow: 0 1px 4px rgba(37,99,235,0.25) !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    }
+    .stButton > button:active { transform: translateY(0) !important; }
+
+    /* === SPINNER custom style === */
+    [data-testid="stSpinner"] > div {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        opacity: 0.85 !important;
+    }
+
+    /* === METRIC CARDS compact === */
+    [data-testid="stMetric"] {
+        border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+
+    /* === INPUTS desktop compact === */
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > div {
+        border-radius: 6px !important;
+        font-size: 0.88rem !important;
+    }
+
+    /* === CONTAINERS with subtle border === */
+    [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > div[data-testid="element-container"] > div.stContainerBorder {
+        border-radius: 10px !important;
+    }
 
     /* === PROFESSIONAL NAVIGATION BAR (Theme Agnostic) === */
     .stTabs [data-baseweb="tab-list"] {
@@ -3774,8 +3935,15 @@ def init_session_state(clear_form=False):
         "ui_theme": "Midnight",
     }
 
+    # Load persisted settings (theme preference)
+    if "_settings_loaded" not in st.session_state:
+        st.session_state._settings_loaded = True
+        saved = _load_settings()
+        if "ui_theme" in saved:
+            defaults["ui_theme"] = saved["ui_theme"]
+
     if "history" not in st.session_state:
-        st.session_state.history = []
+        st.session_state.history = _load_history()
 
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []
@@ -4012,6 +4180,7 @@ def sync_ai_selector_to_active_characteristic():
 
 def set_ui_theme(theme_name):
     st.session_state.ui_theme = theme_name
+    _save_settings({"ui_theme": theme_name})
     try:
         st.query_params["theme"] = theme_name.lower()
     except Exception:
@@ -4235,9 +4404,10 @@ with tab_analysis:
     # --- Analysis Logic ---
     if submitted:
         # User clicked Analyze, so we run calculations for the active characteristic
-        st.session_state.results, st.session_state.summary, st.session_state.figs = (
-            run_characteristic_analysis(active_characteristic)
-        )
+        with st.spinner("🔬 Calculating capability indices and statistics..."):
+            st.session_state.results, st.session_state.summary, st.session_state.figs = (
+                run_characteristic_analysis(active_characteristic)
+            )
 
         if not st.session_state.results.get("error"):
             # Update Sigma Assistant mascot state based on verdict
@@ -4257,24 +4427,26 @@ with tab_analysis:
                 st.session_state.mascot_message = None
             st.session_state.mascot_cp = cp_value if cp_value and cp_value > 0 else 1.0
 
-            # Save to history
+            # Save to history (memory + disk)
             history_entry = st.session_state.results.copy()
             history_entry["id"] = datetime.datetime.now().isoformat()
             history_entry["characteristic_name"] = active_characteristic
             if "importedData" in history_entry:
                 del history_entry["importedData"]  # Don't save large data array
             st.session_state.history.insert(0, history_entry)
-            st.session_state.history = st.session_state.history[:250]  # Limit history
+            st.session_state.history = st.session_state.history[:250]
+            _save_history(st.session_state.history)
 
-            # Generate plots
-            fig_before, fig_after, fig_hist = plotter.update_plots(
-                st.session_state.results
-            )
-            st.session_state.figs = {
-                "before": fig_before,
-                "after": fig_after,
-                "hist": fig_hist,
-            }
+            # Generate plots with loading spinner
+            with st.spinner("📊 Rendering control charts and histogram..."):
+                fig_before, fig_after, fig_hist = plotter.update_plots(
+                    st.session_state.results
+                )
+                st.session_state.figs = {
+                    "before": fig_before,
+                    "after": fig_after,
+                    "hist": fig_hist,
+                }
             sync_characteristic_from_global(active_characteristic)
 
         else:
@@ -5961,7 +6133,24 @@ The headline **Future Mean** now matches the **last forecast point** on the char
 # --- Tab 5: History ---
 with tab_history:
     st.header("Analysis History (Last 250 Runs)")
-    st.caption('History is logged only when you click the "ANALYZE & PLOT" button.')
+    st.caption('History is logged every time you click "ANALYZE & PLOT" and auto-saved to disk.')
+
+    # Show storage location
+    _hist_path = str(_HISTORY_FILE)
+    _hist_exists = _HISTORY_FILE.exists()
+    _hist_size = f"{_HISTORY_FILE.stat().st_size / 1024:.1f} KB" if _hist_exists else "—"
+    st.markdown(
+        f"""<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;
+        background:rgba(59,130,246,0.08);border-radius:8px;border:1px solid rgba(59,130,246,0.18);
+        margin-bottom:12px;font-size:12px;">
+        <span style="font-size:18px;">💾</span>
+        <div>
+          <span style="font-weight:600;opacity:0.9;">History auto-saved to disk</span>
+          &nbsp;·&nbsp; <code style="font-size:11px;">{_hist_path}</code>
+          &nbsp;·&nbsp; <span style="opacity:0.7;">{_hist_size} · {len(st.session_state.history)} entries</span>
+        </div></div>""",
+        unsafe_allow_html=True,
+    )
 
     if not st.session_state.history:
         st.info("No history available. Run an analysis to log it here.")
@@ -6189,6 +6378,7 @@ with tab_history:
         with btn_cols[3]:
             if st.button("🗑 Clear History", use_container_width=True):
                 st.session_state.history = []
+                _save_history([])  # also wipe disk
                 st.rerun()
 
 
