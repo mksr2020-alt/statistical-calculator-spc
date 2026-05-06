@@ -75,7 +75,21 @@ def _save_file_to_desktop(data: bytes, filename: str) -> str:
 
 def _save_file_with_dialog(data: bytes, default_filename: str) -> str | None:
     """Show a native Windows 'Save As' dialog, write the file, return path.
+    Bypasses dialog if a default_export_dir is set in settings.
     Falls back to Desktop/SPC_Exports/ if tkinter is unavailable or cancelled."""
+    
+    # Check if user has configured a default export directory
+    import streamlit as st
+    try:
+        default_dir = st.session_state.get("settings", {}).get("default_export_dir", "")
+        if default_dir and os.path.isdir(default_dir):
+            out_path = os.path.join(default_dir, default_filename)
+            with open(out_path, "wb") as f:
+                f.write(data)
+            return out_path
+    except Exception:
+        pass
+
     ext = default_filename.rsplit(".", 1)[-1].lower() if "." in default_filename else ""
     filetypes_map = {
         "xlsx": [("Excel Workbook", "*.xlsx"), ("All Files", "*.*")],
