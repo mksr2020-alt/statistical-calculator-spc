@@ -207,6 +207,7 @@ SPLASH_HTML = """<!DOCTYPE html>
   .icon-box {
     width: 80px; height: 80px; border-radius: 18px;
     background: #111827;
+    color: #ffffff;
     display: flex; align-items: center; justify-content: center;
     font-size: 42px; margin-bottom: 24px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.18);
@@ -266,7 +267,7 @@ SPLASH_HTML = """<!DOCTYPE html>
   <div class="card">
     <div class="icon-box">&#931;</div>
     <h1>SPC Calculator</h1>
-    <p class="sub">Statistical Process Capability</p>
+    <p class="sub">Statistical Process Capability v1.0</p>
     <div class="prog-wrap"><div class="prog-bar"></div></div>
     <p class="status"></p>
   </div>

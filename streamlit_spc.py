@@ -4265,17 +4265,8 @@ def sync_ai_selector_to_active_characteristic():
     )
 
 
-def set_ui_theme(theme_name):
-    st.session_state.ui_theme = theme_name
-    _save_settings({"ui_theme": theme_name})
-    _write_streamlit_config(theme_name)   # write config.toml for next startup
-    try:
-        st.query_params["theme"] = theme_name.lower()
-    except Exception:
-        pass
-
-# --- Main App UI — Header with compact theme toggle + Refresh ---
-_hdr_col, _theme_col, _refresh_col = st.columns([4, 1, 0.4], gap="small")
+# --- Main App UI — Header with compact Refresh ---
+_hdr_col, _refresh_col = st.columns([5, 0.4], gap="small")
 with _hdr_col:
     st.markdown(
         '<div class="app-shell">'
@@ -4284,31 +4275,14 @@ with _hdr_col:
         '</div>',
         unsafe_allow_html=True,
     )
-with _theme_col:
-    _theme_map = {"☀️ Light": "Light", "🌙 Midnight": "Midnight", "⚫ Graphite": "Graphite"}
-    _theme_labels = list(_theme_map.keys())
-    _cur_theme = st.session_state.get("ui_theme", "Midnight")
-    _cur_label = next((k for k, v in _theme_map.items() if v == _cur_theme), _theme_labels[1])
-    _sel_label = st.selectbox(
-        "Theme",
-        _theme_labels,
-        index=_theme_labels.index(_cur_label),
-        key="compact_theme_select",
-        label_visibility="collapsed",
-    )
-    if _theme_map[_sel_label] != _cur_theme:
-        set_ui_theme(_theme_map[_sel_label])
-        st.info("♻️ Theme saved. Restart app for full effect.", icon="🎨")
-        st.rerun()
 with _refresh_col:
     st.markdown('<p style="margin:14px 0 2px;"></p>', unsafe_allow_html=True)
     if st.button("🔄", help="Refresh / Reload the app", use_container_width=True):
         st.rerun()
 
-
 # Define Tabs
-tab_analysis, tab_data, tab_viz, tab_ai, tab_history, tab_ref = st.tabs(
-    ["Analysis & Report", "Data Worksheet", "Visualization", "AI Predictive Health", "History", "Reference"]
+tab_analysis, tab_data, tab_viz, tab_ai, tab_history, tab_ref, tab_settings = st.tabs(
+    ["Analysis & Report", "Data Worksheet", "Visualization", "AI Predictive Health", "History", "Reference", "⚙️ Settings"]
 )
 
 # --- Tab 1: Analysis & Report ---
@@ -6518,47 +6492,7 @@ with tab_history:
 
 # --- Tab 6: Reference ---
 with tab_ref:
-    st.header("Reference Guide & Chatbot")
-
-    # --- Feedback panel at top of Reference tab (always visible) ---
-    with st.expander("📧 Report a Problem / Contact KST5KOR", expanded=False):
-        fb_c1, fb_c2 = st.columns([2, 1])
-        with fb_c1:
-            _fb_type = st.selectbox(
-                "Type",
-                ["🐛 Bug / Error", "💡 Feature Request", "❓ General Question", "👍 Other"],
-                key="fb_type", label_visibility="collapsed",
-            )
-            _fb_desc = st.text_area(
-                "Describe", placeholder="e.g. When I click Analyze the app shows error...",
-                height=90, key="fb_desc", label_visibility="collapsed",
-            )
-            _fb_steps = st.text_input("Steps (optional)",
-                placeholder="1. Open Visualization  2. Click...", key="fb_steps")
-            if st.button("📤 Generate Report Text", key="fb_gen"):
-                st.code(
-                    f"SPC Calculator — Feedback\nType: {_fb_type}\n"
-                    f"Description: {_fb_desc}\nSteps: {_fb_steps}\nContact: KST5KOR",
-                    language=None
-                )
-                st.success("✅ Copy the text above and send via Bosch Teams / Email to KST5KOR")
-        with fb_c2:
-            st.markdown(
-                """
-                <div style="padding:14px 18px;border-radius:10px;
-                border:1px solid rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);">
-                <p style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
-                font-weight:700;margin-bottom:6px;opacity:0.7;">Tool Owner</p>
-                <p style="font-size:26px;font-weight:900;letter-spacing:1px;margin-bottom:2px;">KST5KOR</p>
-                <p style="font-size:11px;opacity:0.6;margin-bottom:10px;">Developer &amp; Maintainer</p>
-                <hr style="border:none;border-top:1px solid rgba(128,128,128,0.2);margin:8px 0;">
-                <p style="font-size:11px;opacity:0.65;line-height:1.8;">
-                💬 Bosch Teams<br>📧 Internal Email<br>📦 SPC Calculator v2.1
-                </p></div>
-                """,
-                unsafe_allow_html=True,
-            )
-    st.divider()
+    st.header("Reference Guide")
 
     ref_cols = st.columns([2, 1])
 
@@ -6742,9 +6676,14 @@ This tool performs a **one-sample t-test** to determine if μ differs from Tₘ:
                 {"role": "assistant", "content": response}
             )
 
-# --- Feedback & Support Section ---
-st.divider()
-with st.expander("📧 Report a Problem / Feedback", expanded=False):
+# --- Tab 7: Settings ---
+with tab_settings:
+    st.header("⚙️ Application Settings")
+    st.markdown("Configure application preferences and get support here.")
+    st.divider()
+    
+    # --- Feedback & Support Section ---
+    st.subheader("📧 Report a Problem / Feedback")
     fb_col1, fb_col2 = st.columns([2, 1])
     with fb_col1:
         st.markdown(
@@ -6760,22 +6699,22 @@ with st.expander("📧 Report a Problem / Feedback", expanded=False):
         _fb_type = st.selectbox(
             "Type",
             ["🐛 Bug / Error", "💡 Feature Request", "❓ General Question", "👍 Other"],
-            key="fb_type",
+            key="fb_type_settings",
             label_visibility="collapsed",
         )
         _fb_desc = st.text_area(
             "Describe the problem",
             placeholder="e.g. When I click Analyze, the app crashes with error...",
             height=100,
-            key="fb_desc",
+            key="fb_desc_settings",
             label_visibility="collapsed",
         )
         _fb_steps = st.text_input(
             "Steps to reproduce (optional)",
             placeholder="1. Open Visualization tab  2. Click...",
-            key="fb_steps",
+            key="fb_steps_settings",
         )
-        if st.button("📤 Copy Report to Clipboard", use_container_width=False):
+        if st.button("📤 Copy Report to Clipboard", use_container_width=False, key="fb_gen_settings"):
             _report_text = (
                 f"SPC Calculator — Feedback Report\n"
                 f"Type: {_fb_type}\n"
@@ -6801,12 +6740,13 @@ with st.expander("📧 Report a Problem / Feedback", expanded=False):
               <p style="font-size:11px;opacity:0.65;">
                 💬 Bosch Teams<br>
                 📧 Internal Email<br>
-                📦 SPC Calculator v2.1
+                📦 SPC Calculator v1.0
               </p>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
 
 # --- Floating Sigma Assistant (Clippy-style) ---
 # This renders as a fixed position widget in the bottom-right corner of the page
