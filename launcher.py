@@ -100,12 +100,37 @@ def wait_for_server(port: int, timeout: int = 90) -> bool:
 
 
 # ── Streamlit boot ────────────────────────────────────────────────────────────
+def _patch_signal_for_thread():
+    """
+    CRITICAL FIX: Streamlit calls signal.signal(SIGTERM, ...) during startup,
+    but signal handlers can only be set from the main thread in Python.
+    Since we run Streamlit in a background thread, we patch signal.signal to
+    silently skip registration when called from a non-main thread.
+    """
+    import signal as _sig
+    import threading as _thr
+
+    _original_signal = _sig.signal
+
+    def _safe_signal(sig, handler):
+        if _thr.current_thread() is _thr.main_thread():
+            return _original_signal(sig, handler)
+        # Silently ignore — not in main thread, signal registration not possible
+        log.debug(f'[signal patch] Skipped signal.signal({sig}) — not in main thread.')
+
+    _sig.signal = _safe_signal
+    log.info('Signal patch applied.')
+
+
 def run_streamlit(port: int) -> None:
     """
-    Boot Streamlit using its bootstrap API.
-    Must run in a daemon thread — killed automatically when pywebview closes.
+    Boot Streamlit using its bootstrap API in a background thread.
+    The signal patch above makes this safe to run outside the main thread.
     """
     try:
+        # Apply signal patch BEFORE any streamlit import
+        _patch_signal_for_thread()
+
         # Windows: fix asyncio event loop policy (required in PyInstaller bundles)
         if sys.platform == 'win32':
             import asyncio
@@ -139,6 +164,7 @@ def run_streamlit(port: int) -> None:
 
     except Exception as e:
         log.exception(f'Streamlit failed to start: {e}')
+
 
 
 # ── Splash screen HTML ────────────────────────────────────────────────────────
