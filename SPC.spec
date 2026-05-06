@@ -45,6 +45,22 @@ if os.path.exists("assets/icon.ico"):
 elif os.path.exists("assets/icon.png"):
     datas += [("assets/icon.png", "assets")]
 
+# Explicitly collect Streamlit's static web assets (JS, CSS, fonts)
+# This is the most common cause of "server failed to start" in PyInstaller bundles
+import streamlit as _st
+import pathlib as _pl
+_st_pkg_dir = _pl.Path(_st.__file__).parent
+_st_static = _st_pkg_dir / "static"
+_st_runtime = _st_pkg_dir / "runtime"
+if _st_static.exists():
+    datas += [(str(_st_static), "streamlit/static")]
+if _st_runtime.exists():
+    datas += [(str(_st_runtime), "streamlit/runtime")]
+# Streamlit component lib (for st.components.v1)
+_st_components = _st_pkg_dir / "components"
+if _st_components.exists():
+    datas += [(str(_st_components), "streamlit/components")]
+
 
 # ── Hidden imports ────────────────────────────────────────────────────────────
 # PyInstaller's static analysis misses dynamically imported sub-modules.
