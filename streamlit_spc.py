@@ -3703,6 +3703,7 @@ def build_characteristic_metadata():
     for name, state in st.session_state.characteristics.items():
         rows.append(
             {
+                "_OriginalName": name,
                 "Characteristic": name,
                 "Description": state.get("description", ""),
                 "Target Mean": state.get("tm", 10.0),
@@ -3716,11 +3717,14 @@ def build_characteristic_metadata():
 def save_characteristic_metadata(metadata_df):
     updated = {}
     for _, row in metadata_df.iterrows():
+        orig_name = row.get("_OriginalName")
         raw_name = sanitize_characteristic_name(row.get("Characteristic"))
-        if not raw_name:
+        if not raw_name or not orig_name:
             continue
+        
+        # Pull state using the original name, but update measurement_name to the new name
         prior_state = st.session_state.characteristics.get(
-            raw_name, default_characteristic_state(raw_name)
+            orig_name, default_characteristic_state(raw_name)
         )
         prior_state["measurement_name"] = raw_name
         prior_state["description"] = str(row.get("Description", "") or "")
@@ -3728,8 +3732,18 @@ def save_characteristic_metadata(metadata_df):
         prior_state["lsl"] = row.get("LSL", prior_state["lsl"])
         prior_state["usl"] = row.get("USL", prior_state["usl"])
         updated[raw_name] = prior_state
+        
     if updated:
+        old_active = st.session_state.active_characteristic_name
+        old_to_new = {row.get("_OriginalName"): sanitize_characteristic_name(row.get("Characteristic")) 
+                      for _, row in metadata_df.iterrows() 
+                      if sanitize_characteristic_name(row.get("Characteristic"))}
+                      
+        if old_active in old_to_new:
+            st.session_state.active_characteristic_name = old_to_new[old_active]
+            
         st.session_state.characteristics = updated
+        
         if st.session_state.active_characteristic_name not in updated:
             st.session_state.active_characteristic_name = next(iter(updated))
         set_active_characteristic(st.session_state.active_characteristic_name)
@@ -4871,10 +4885,11 @@ with tab_data:
             use_container_width=True,
             hide_index=True,
             column_config={
+                "_OriginalName": None,  # Hide the original name tracker
                 "Characteristic": st.column_config.TextColumn(
                     "Characteristic Name",
-                    help="Name of the measurement characteristic.",
-                    disabled=True,
+                    help="Name of the measurement characteristic (Editable).",
+                    disabled=False,
                 ),
                 "Description": st.column_config.TextColumn(
                     "Description",

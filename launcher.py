@@ -265,7 +265,12 @@ SPLASH_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <div class="card">
-    <div class="icon-box">&#931;</div>
+    <div class="icon-box">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 20h20"></path>
+        <path d="M4 20s2.5-12 8-16c5.5 4 8 16 8 16"></path>
+      </svg>
+    </div>
     <h1>SPC Calculator</h1>
     <p class="sub">Statistical Process Capability v1.0</p>
     <div class="prog-wrap"><div class="prog-bar"></div></div>
