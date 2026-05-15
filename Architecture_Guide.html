@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC Tool Architecture Guide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-light: #60a5fa;
+            --secondary: #06b6d4;
+            --dark: #0f172a;
+            --dark-alt: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass: rgba(30, 41, 59, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Outfit', sans-serif;
+            margin-bottom: 1rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 4rem 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 3rem;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            background: linear-gradient(to right, #60a5fa, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            padding: 2rem;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .section:hover {
+            transform: translateY(-5px);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .card h3 {
+            color: var(--secondary);
+            font-size: 1.2rem;
+        }
+
+        .library-tag {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--primary-light);
+            padding: 0.2rem 0.8rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .mermaid {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin: 2rem 0;
+        }
+
+        code[class*="language-"], pre[class*="language-"] {
+            font-size: 0.9rem;
+            border-radius: 1rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 4rem 0;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+        }
+
+        .highlight {
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--dark);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--dark-alt);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <h1 class="hero-title">SPC Tool Architecture</h1>
+        <p style="font-size: 1.2rem; color: var(--text-muted);">A deep dive into the code, flow, and libraries powering the Statistical Process Calculator.</p>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- Overview -->
+    <div class="section">
+        <h2>1. System Overview</h2>
+        <p>The SPC Tool is a professional-grade web application built using the <span class="highlight">Streamlit</span> framework. It serves as a unified platform for statistical process control, combining data analysis, visualization, and automated reporting into a single, high-performance interface.</p>
+        <p style="margin-top: 1rem;">It operates as a <strong>Stateful Web Application</strong> where the frontend and backend are tightly coupled via a reactive data flow engine.</p>
+    </div>
+
+    <!-- The Stack -->
+    <div class="section">
+        <h2>2. Technology Stack</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>Frontend Layer</h3>
+                <p>Rendered in the browser using React (via Streamlit's engine) and Vanilla CSS for custom styling.</p>
+                <div style="margin-top: 1rem;">
+                    <span class="library-tag">Streamlit UI</span>
+                    <span class="library-tag">Plotly.js</span>
+                    <span class="library-tag">React.js</span>
+                    <span class="library-tag">HTML5/CSS3</span>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Backend Layer</h3>
+                <p>A Python 3.12 server handling all statistical computations, file generation, and state management.</p>
+                <div style="margin-top: 1rem;">
+                    <span class="library-tag">Python 3.12</span>
+                    <span class="library-tag">Pandas</span>
+                    <span class="library-tag">Numpy</span>
+                    <span class="library-tag">Scipy</span>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Reporting & Export</h3>
+                <p>High-quality PDF and Excel generation engines for professional industrial reports.</p>
+                <div style="margin-top: 1rem;">
+                    <span class="library-tag">ReportLab</span>
+                    <span class="library-tag">OpenPyXL</span>
+                    <span class="library-tag">Kaleido</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flow Chart -->
+    <div class="section">
+        <h2>3. Data Flow Architecture</h2>
+        <p>Below is the complete architectural flow of how data moves between the User, the Frontend, and the Backend Logic.</p>
+        
+        <div class="mermaid">
+            graph TD
+                User((User / Engineer)) -->|1. Input Data| UI[Browser Frontend - Streamlit]
+                UI -->|2. WebSocket Event| Server[Streamlit Python Server]
+                
+                subgraph Backend Logic
+                    Server -->|3. Run Script| Script[streamlit_spc.py]
+                    Script -->|4. Calculate| Calc[StatisticalCalculator Class]
+                    Calc -->|Math| Scipy[Scipy / Numpy]
+                    Calc -->|Results| Script
+                    Script -->|5. Generate Charts| Plot[PlotManager Class]
+                    Plot -->|JSON Config| Script
+                end
+                
+                Script -->|6. Sync State| UI
+                UI -->|7. Re-render| User
+                
+                subgraph Export Engine
+                    Script -->|Request Export| PDF[ReportLab Engine]
+                    Script -->|Request Export| Excel[OpenPyXL Engine]
+                    PDF -->|Binary| BrowserDownload[Browser Download]
+                    Excel -->|Binary| BrowserDownload
+                end
+        </div>
+    </div>
+
+    <!-- Core Logic -->
+    <div class="section">
+        <h2>4. Core Libraries & Usage</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+            <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+                <th style="padding: 1rem;">Library</th>
+                <th style="padding: 1rem;">Primary Purpose</th>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">Streamlit</code></td>
+                <td style="padding: 1rem;">Handles the layout, widgets, and the WebSocket connection between Python and the browser.</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">Pandas</code></td>
+                <td style="padding: 1rem;">The "Data Engine" used for reading Excel/CSV files and managing large datasets in memory.</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">Scipy.stats</code></td>
+                <td style="padding: 1rem;">Used for complex statistical distributions (Normal, Lognormal) and P-Value calculations.</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">Plotly</code></td>
+                <td style="padding: 1rem;">Powers the interactive charts, allowing users to hover over points and zoom into data.</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">ReportLab</code></td>
+                <td style="padding: 1rem;">A low-level PDF generation library that builds the branded Capability Reports.</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Implementation Details -->
+    <div class="section">
+        <h2>5. Key Implementation Snippets</h2>
+        <p>The calculation engine is encapsulated in the <code>StatisticalCalculator</code> class to ensure thread safety and modularity.</p>
+        <pre><code class="language-python">
+# Example of Nelson Rules Implementation
+def evaluate_nelson_rules(self, data, mean, std):
+    rules = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: []}
+    for i, v in enumerate(data):
+        # Rule 1: Point > 3sigma from mean
+        if abs(v - mean) > 3 * std: 
+            rules[1].append(i)
+        # Rule 2: 9 points same side of mean
+        if i >= 8:
+            slice_data = data[i-8:i+1]
+            if all(x > mean for x in slice_data) or all(x < mean for x in slice_data): 
+                rules[2].append(i)
+    return rules
+        </code></pre>
+    </div>
+
+</div>
+
+<footer>
+    <p>&copy; 2026 SPC Statistical Calculator | Architecture Documentation</p>
+</footer>
+
+<script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>
+
+</body>
+</html>
