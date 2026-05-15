@@ -173,11 +173,11 @@
         <div class="grid">
             <div class="card">
                 <h3>Frontend Layer</h3>
-                <p>Rendered in the browser using React (via Streamlit's engine) and Vanilla CSS for custom styling.</p>
+                <p>Rendered in the browser or Desktop window using React (via Streamlit's engine) and Vanilla CSS.</p>
                 <div style="margin-top: 1rem;">
                     <span class="library-tag">Streamlit UI</span>
                     <span class="library-tag">Plotly.js</span>
-                    <span class="library-tag">React.js</span>
+                    <span class="library-tag">PyWebView</span>
                     <span class="library-tag">HTML5/CSS3</span>
                 </div>
             </div>
@@ -192,51 +192,80 @@
                 </div>
             </div>
             <div class="card">
-                <h3>Reporting & Export</h3>
-                <p>High-quality PDF and Excel generation engines for professional industrial reports.</p>
+                <h3>Packaging & Distribution</h3>
+                <p>Advanced bundling techniques to convert Python scripts into standalone Windows executables.</p>
                 <div style="margin-top: 1rem;">
-                    <span class="library-tag">ReportLab</span>
-                    <span class="library-tag">OpenPyXL</span>
-                    <span class="library-tag">Kaleido</span>
+                    <span class="library-tag">PyInstaller</span>
+                    <span class="library-tag">GitHub Actions</span>
+                    <span class="library-tag">PowerShell/Bash</span>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop vs Web -->
+    <div class="section">
+        <h2>3. Deployment Modes</h2>
+        <p>The SPC Tool is designed to be highly versatile, supporting two primary deployment methods:</p>
+        <div class="grid" style="margin-top: 1.5rem;">
+            <div class="card">
+                <h3>🌐 Web Mode (Server)</h3>
+                <p>Run on a central PC or server using <code>start_server.bat</code>. Colleagues connect via their browsers using the server's IP address (e.g., <code>http://192.168.1.10:8501</code>).</p>
+            </div>
+            <div class="card">
+                <h3>🖥️ Desktop Mode (.EXE)</h3>
+                <p>A standalone <strong>Windows Executable</strong> bundled with all dependencies. It runs as a native desktop application with its own window, icon, and splash screen.</p>
             </div>
         </div>
     </div>
 
     <!-- Flow Chart -->
     <div class="section">
-        <h2>3. Data Flow Architecture</h2>
-        <p>Below is the complete architectural flow of how data moves between the User, the Frontend, and the Backend Logic.</p>
+        <h2>4. Data Flow Architecture</h2>
+        <p>Below is the complete architectural flow, including the **Desktop Launcher** logic used in the distributed <code>.exe</code> versions.</p>
         
         <div class="mermaid">
             graph TD
-                User((User / Engineer)) -->|1. Input Data| UI[Browser Frontend - Streamlit]
-                UI -->|2. WebSocket Event| Server[Streamlit Python Server]
+                subgraph Distribution [Distribution Methods]
+                    EXE[Standalone .EXE]
+                    WEB[Web Browser]
+                end
+
+                subgraph DesktopWrapper [Desktop Launcher Logic]
+                    EXE -->|Starts| Launcher[launcher.py]
+                    Launcher -->|1. Init| WV[PyWebView Window]
+                    WV -->|Show| Splash[Splash Screen]
+                    Launcher -->|2. Boot| STServer[Streamlit Server Thread]
+                    STServer -->|3. Ready| WV
+                    WV -->|4. Load| LocalURL[http://127.0.0.1:port]
+                end
+
+                WEB -->|Connect| STServer
                 
-                subgraph Backend Logic
-                    Server -->|3. Run Script| Script[streamlit_spc.py]
-                    Script -->|4. Calculate| Calc[StatisticalCalculator Class]
+                subgraph CoreEngine [Backend Logic Engine]
+                    STServer -->|Run| Script[streamlit_spc.py]
+                    Script -->|Calculate| Calc[StatisticalCalculator Class]
                     Calc -->|Math| Scipy[Scipy / Numpy]
                     Calc -->|Results| Script
-                    Script -->|5. Generate Charts| Plot[PlotManager Class]
+                    Script -->|Generate Charts| Plot[PlotManager Class]
                     Plot -->|JSON Config| Script
                 end
                 
-                Script -->|6. Sync State| UI
-                UI -->|7. Re-render| User
+                Script -->|Sync State| LocalURL
+                LocalURL -->|Render| User((User / Engineer))
                 
-                subgraph Export Engine
-                    Script -->|Request Export| PDF[ReportLab Engine]
-                    Script -->|Request Export| Excel[OpenPyXL Engine]
-                    PDF -->|Binary| BrowserDownload[Browser Download]
-                    Excel -->|Binary| BrowserDownload
+                subgraph ExportEngine [Reporting Engine]
+                    Script -->|Export PDF| RL[ReportLab]
+                    Script -->|Export Excel| OX[OpenPyXL]
+                    RL -->|Report| User
+                    OX -->|Sheet| User
                 end
         </div>
     </div>
 
-    <!-- Core Logic -->
+    <!-- Core Libraries & Usage -->
     <div class="section">
-        <h2>4. Core Libraries & Usage</h2>
+        <h2>5. Core Libraries & Usage</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
             <tr style="border-bottom: 1px solid var(--border); text-align: left;">
                 <th style="padding: 1rem;">Library</th>
@@ -244,45 +273,43 @@
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
                 <td style="padding: 1rem;"><code class="highlight">Streamlit</code></td>
-                <td style="padding: 1rem;">Handles the layout, widgets, and the WebSocket connection between Python and the browser.</td>
+                <td style="padding: 1rem;">Core UI framework and reactive state management engine.</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 1rem;"><code class="highlight">Pandas</code></td>
-                <td style="padding: 1rem;">The "Data Engine" used for reading Excel/CSV files and managing large datasets in memory.</td>
+                <td style="padding: 1rem;"><code class="highlight">PyInstaller</code></td>
+                <td style="padding: 1rem;">Freezes the entire Python environment and dependencies into a single <code>.exe</code> file.</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 1rem;"><code class="highlight">PyWebView</code></td>
+                <td style="padding: 1rem;">Creates a native desktop window and handles the splash screen during server boot.</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
                 <td style="padding: 1rem;"><code class="highlight">Scipy.stats</code></td>
-                <td style="padding: 1rem;">Used for complex statistical distributions (Normal, Lognormal) and P-Value calculations.</td>
+                <td style="padding: 1rem;">Advanced statistical distribution calculations (Normal, Lognormal).</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
                 <td style="padding: 1rem;"><code class="highlight">Plotly</code></td>
-                <td style="padding: 1rem;">Powers the interactive charts, allowing users to hover over points and zoom into data.</td>
-            </tr>
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 1rem;"><code class="highlight">ReportLab</code></td>
-                <td style="padding: 1rem;">A low-level PDF generation library that builds the branded Capability Reports.</td>
+                <td style="padding: 1rem;">Renders high-performance interactive control charts and histograms.</td>
             </tr>
         </table>
     </div>
 
     <!-- Implementation Details -->
     <div class="section">
-        <h2>5. Key Implementation Snippets</h2>
-        <p>The calculation engine is encapsulated in the <code>StatisticalCalculator</code> class to ensure thread safety and modularity.</p>
+        <h2>6. Desktop Launcher Implementation</h2>
+        <p>To run Streamlit inside a bundled <code>.exe</code>, the launcher manually handles the server boot process and signal patching to allow background execution.</p>
         <pre><code class="language-python">
-# Example of Nelson Rules Implementation
-def evaluate_nelson_rules(self, data, mean, std):
-    rules = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: []}
-    for i, v in enumerate(data):
-        # Rule 1: Point > 3sigma from mean
-        if abs(v - mean) > 3 * std: 
-            rules[1].append(i)
-        # Rule 2: 9 points same side of mean
-        if i >= 8:
-            slice_data = data[i-8:i+1]
-            if all(x > mean for x in slice_data) or all(x < mean for x in slice_data): 
-                rules[2].append(i)
-    return rules
+# launcher.py - Booting Streamlit in a daemon thread
+def run_streamlit(port: int):
+    # Patch signal: handlers can only be set from main thread
+    _patch_signal_for_thread()
+    
+    import streamlit.web.bootstrap as bootstrap
+    app_path = resource_path('streamlit_spc.py')
+    
+    # Configure and start in headless mode
+    bootstrap.load_config_options(flag_options={'server.port': port, 'server.headless': True})
+    bootstrap.run(app_path, 'streamlit run', [], flag_options)
         </code></pre>
     </div>
 
